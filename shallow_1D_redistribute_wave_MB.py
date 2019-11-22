@@ -508,6 +508,8 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             uL = 0.0
             phiL = 0.0
 
+        hm,um,s1m,s2m,rare1,rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
+
         if (hL > drytol or hR > drytol):
             wall = np.ones(2)
             if (hR <= drytol):
