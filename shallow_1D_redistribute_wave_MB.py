@@ -544,15 +544,21 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             sRoe2 = uhat + chat
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
+            if hL <= drytol:
+                s1 = min(s1,um+np.sqrt(g*hm))
+            if hR <= drytol:
+                s2 = min(s2,um-np.sqrt(g*hm))
 
+            fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
             #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
-            if rarecorrector == True:
-                s1 = sE1
-                s2 = sE2
+            # if rarecorrector == True:
+            #     s1 = sE1
+            #     s2 = sE2
+
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:2,0] * wall[0]
-            fwave[:,1,i] = fw[:2,1] * wall[1]
+            fwave[:,0,i] = fw[:,0] * wall[0]
+            fwave[:,1,i] = fw[:,1] * wall[1]
             # print("fw: ", fw)
 
             for mw in range(num_waves):
@@ -563,14 +569,14 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                 else:
                     amdq[:,i] += 0.5 * fwave[:,mw,i]
                     apdq[:,i] += 0.5 * fwave[:,mw,i]
-            if rarecorrector == True:
-                if 0.5*(s1+s2) < 0:
-                    amdq[:,i] += fw[:2,2]
-                elif 0.5*(s1+s2) > 0:
-                    apdq[:,i] += fw[:2,2]
-                else:
-                    amdq[:,i] += 0.5 * fw[:2,2]
-                    apdq[:,i] += 0.5 * fw[:2,2]
+            # if rarecorrector == True:
+            #     if 0.5*(s1+s2) < 0:
+            #         amdq[:,i] += fw[:2,2]
+            #     elif 0.5*(s1+s2) > 0:
+            #         apdq[:,i] += fw[:2,2]
+            #     else:
+            #         amdq[:,i] += 0.5 * fw[:2,2]
+            #         apdq[:,i] += 0.5 * fw[:2,2]
 
 
     s_wall[0] = np.min(s)
@@ -694,14 +700,14 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
                 else:
                     amdq[:,i] += 0.5 * fwave[:,mw,i]
                     apdq[:,i] += 0.5 * fwave[:,mw,i]
-            if rarecorrector == True:
-                if 0.5*(s1+s2) < 0:
-                    amdq[:,i] += fw[:2,2]
-                elif 0.5*(s1+s2) > 0:
-                    apdq[:,i] += fw[:2,2]
-                else:
-                    amdq[:,i] += 0.5 * fw[:2,2]
-                    apdq[:,i] += 0.5 * fw[:2,2]
+            # if rarecorrector == True:
+            #     if 0.5*(s1+s2) < 0:
+            #         amdq[:,i] += fw[:2,2]
+            #     elif 0.5*(s1+s2) > 0:
+            #         apdq[:,i] += fw[:2,2]
+            #     else:
+            #         amdq[:,i] += 0.5 * fw[:2,2]
+            #         apdq[:,i] += 0.5 * fw[:2,2]
     if True == True:
         wall_height = problem_data['wall_height']
         iw = 2
@@ -856,14 +862,14 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                     else:
                         amdq[:,i] += 0.5 * fwave[:,mw,i]
                         apdq[:,i] += 0.5 * fwave[:,mw,i]
-                if rarecorrector == True:
-                    if 0.5*(s1+s2) < 0:
-                        amdq[:,i] += fw[:2,2]
-                    elif 0.5*(s1+s2) > 0:
-                        apdq[:,i] += fw[:2,2]
-                    else:
-                        amdq[:,i] += 0.5 * fw[:2,2]
-                        apdq[:,i] += 0.5 * fw[:2,2]
+            #    if rarecorrector == True:
+            #        if 0.5*(s1+s2) < 0:
+            #            amdq[:,i] += fw[:2,2]
+            #        elif 0.5*(s1+s2) > 0:
+            #            apdq[:,i] += fw[:2,2]
+            #        else:
+            #            amdq[:,i] += 0.5 * fw[:2,2]
+            #            apdq[:,i] += 0.5 * fw[:2,2]
 
 #################
 
