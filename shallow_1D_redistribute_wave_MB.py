@@ -111,7 +111,7 @@ def riemanntype(hL, hR, uL, uR, maxiter, drytol, g):
                 rare2 = True
                 rare1 = False
 
-    return hm, s1m, s2m, rare1, rare2
+    return hm, um, s1m, s2m, rare1, rare2
 
 
 def shallow_fwave_1d(q_l, q_r, aux_l, aux_r, problem_data):
@@ -431,7 +431,7 @@ def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
 
     if (hL > drytol):
         uL = huL / hL
-        hstar,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+        hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
         hstartest = max(hL, hstar)
         if (hstartest + bL > 0.5*(bL+bR)+wall_height):
             L2R = True
@@ -439,7 +439,7 @@ def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
 
     if (hR > drytol):
         uR = huR / hR
-        hstar,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+        hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
         hstartest = max(hR, hstar)
         if (hstartest + bR > 0.5*(bL+bR)+wall_height):
             R2L = True
@@ -511,7 +511,7 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
         if (hL > drytol or hR > drytol):
             wall = np.ones(2)
             if (hR <= drytol):
-                hstar,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+                hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
                 hstartest = max(hL, hstar)
                 if (hstartest + bL <= bR):
                     wall[1] = 0.0
@@ -524,7 +524,7 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                     bR = hL + bL
 
             if (hL <= drytol):
-                hstar,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+                hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
                 hstartest = max(hR, hstar)
                 if (hstartest + bR <= bL):
                     wall[0] = 0.0
@@ -545,7 +545,7 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
 
-            fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+            #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
             if rarecorrector == True:
                 s1 = sE1
                 s2 = sE2
@@ -638,10 +638,11 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
             uL = 0.0
             phiL = 0.0
 
+
         if (hL > drytol or hR > drytol):
             wall = np.ones(2)
             if (hR <= drytol):
-                hstar,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+                hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
                 hstartest = max(hL, hstar)
                 if (hstartest + bL <= bR):
                     wall[1] = 0.0
@@ -654,7 +655,7 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
                     bR = hL + bL
 
             if (hL <= drytol):
-                hstar,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+                hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
                 hstartest = max(hR, hstar)
                 if (hstartest + bR <= bL):
                     wall[0] = 0.0
@@ -674,10 +675,11 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
             sRoe2 = uhat + chat
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
-            fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
-            if rarecorrector == True:
-                s1 = sE1
-                s2 = sE2
+
+            #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+            #if rarecorrector == True:
+            #    s1 = sE1
+            #    s2 = sE2
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
             fwave[:,0,i] = fw[:2,0] * wall[0]
@@ -793,11 +795,12 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                 huL = 0.0
                 uL = 0.0
                 phiL = 0.0
+            hm,um,s1m,s2m,rare1,rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
 
             if (hL > drytol or hR > drytol):
                 wall = np.ones(2)
                 if (hR <= drytol):
-                    hstar,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+                    hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
                     hstartest = max(hL, hstar)
                     if (hstartest + bL <= bR):
                         wall[1] = 0.0
@@ -806,11 +809,11 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                         bR = bL
                         phiR = phiL
                         uR = -uL
-                    elif (hL + bL <= bR):
+                    elif (hL + bL <= bR): # for steady state
                         bR = hL + bL
 
                 if (hL <= drytol):
-                    hstar,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+                    hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
                     hstartest = max(hR, hstar)
                     if (hstartest + bR <= bL):
                         wall[0] = 0.0
@@ -829,15 +832,20 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                 sRoe2 = uhat + chat
                 s1 = min(sL, sRoe1)
                 s2 = max(sR, sRoe2)
+                if hL <= drytol:
+                    s1 = min(s1,um+np.sqrt(g*hm))
+                if hR <= drytol:
+                    s2 = min(s2,um-np.sqrt(g*hm))
 
-                fw, rarecorrector, sE1, sE2 = riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
-                if rarecorrector == True:
-                    s1 = sE1
-                    s2 = sE2
+                fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+                #fw, rarecorrector, sE1, sE2 = riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+                #if rarecorrector == True:
+                #    s1 = sE1
+                #    s2 = sE2
                 s[0,i] = s1 * wall[0]
                 s[1,i] = s2 * wall[1]
-                fwave[:,0,i] = fw[:2,0] * wall[0]
-                fwave[:,1,i] = fw[:2,1] * wall[1]
+                fwave[:,0,i] = fw[:,0] * wall[0]
+                fwave[:,1,i] = fw[:,1] * wall[1]
 
 
                 for mw in range(num_waves):
