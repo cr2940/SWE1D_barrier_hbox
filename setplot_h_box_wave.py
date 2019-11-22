@@ -11,7 +11,7 @@ def load_parameters(fileName):
     return params
 
 #--------------------------
-def setplot(plotdata, problem_data):
+def setplot(plotdata,problem_data):
 #--------------------------
     """
     Specify what is to be plotted at each frame.
@@ -72,22 +72,24 @@ def setplot(plotdata, problem_data):
 
     def cell_ref_lines(current_data):
         # plt.hold(True)
-        x = numpy.linspace(xlower, xupper, regular_cells_number+1, endpoint=True)
+        x = numpy.linspace(xlower, xupper, regular_cells_number+2, endpoint=True)
         x_edge = numpy.zeros(cells_number+1)
         x_edge[:nw] = x[:nw]
         x_edge[-nw:] = x[-nw:]
         x_edge[nw] = x_edge[nw-1] + alpha*delta_x
+        x_edge[nw+1] = x_edge[nw] + (1-alpha)*delta_x
+        x_edge[nw+2:] = x[nw+2:]
         y_edge_1 =  -1.0
         y_edge_2 =  1.0
         axis = plt.gca()
         axis.plot([x_edge,x_edge],mass_ylimits,'b--',linewidth=0.5)
-        x_wall = nw_edge_p
+        x_wall = x_edge[nw]
         y1 =  current_data.aux[0,nw-1]
         y2 =  y1 + wall_height
         axis.plot([x_wall,x_wall],[y1,y2],'r',linewidth=2)
 
     def momentum_ref_lines(current_data):
-        x = numpy.linspace(xlower, xupper, regular_cells_number+1, endpoint=True)
+        x = numpy.linspace(xlower, xupper, regular_cells_number+2, endpoint=True)
         x_edge = numpy.zeros(cells_number+1)
         x_edge[:nw] = x[:nw]
         x_edge[-nw:] = x[-nw:]
@@ -106,7 +108,7 @@ def setplot(plotdata, problem_data):
         axis.plot([x_wall,x_wall],[y1,y2],'r',linewidth=2)
 
     rgb_converter = lambda triple: [float(rgb) / 255.0 for rgb in triple]
-    mass_ylimits = [-1.0, 1.0]
+    mass_ylimits = [-1.0, 2]
     x_limits = [xlower, xupper]
     momentum_ylimits = [-1.0, 3.0]
 
@@ -123,11 +125,21 @@ def setplot(plotdata, problem_data):
     plotaxes.axescmd = 'subplot(211)'
     plotType = '1d_pwconst'
     # plotType='1d_plot'
+    # def phys_grid(current_data):
+    #     from pylab import plot
+    #
+    #     xlower = current_data.xlower
+    #     xupper = current_data.xupper
+    #
+
+
 
     plotitem = plotaxes.new_plotitem(plot_type='1d_fill_between')
     plotitem.plot_var = eta
     plotitem.plot_var2 = bathy
     plotitem.color = rgb_converter((67,183,219))
+    plotitem.mapc2p = mapping_h_box
+    #plotitem.afteritem = phys_grid
 
     plotitem = plotaxes.new_plotitem(plot_type=plotType)
     # plotitem = plotaxes.new_plotitem(plot_type='1d_pwconst')
@@ -138,6 +150,7 @@ def setplot(plotdata, problem_data):
     # plotitem = plotaxes.new_plotitem(plot_type='1d_pwconst')
     plotitem.plot_var = eta
     plotitem.color = 'k'
+    #plotitem.plotstyle= 'o'
 
 
     # Axes for momentum
@@ -176,6 +189,7 @@ def setplot(plotdata, problem_data):
     # plotitem = plotaxes.new_plotitem(plot_type='1d_plot')
     plotitem.plot_var = eta
     plotitem.color = 'k'
+    plotitem.plotstyle = '*'
 
     # Axes for momentum
     plotaxes = plotfigure.new_plotaxes()

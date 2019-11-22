@@ -15,7 +15,7 @@ import sys
 import numpy
 import matplotlib.pyplot as plt
 from clawpack import riemann
-import shallow_1D_redistribute_wave_MB
+import shallow_1D_redistribute_wave
 from clawpack.pyclaw.plot import plot
 
 def before_step(solver, states):
@@ -53,7 +53,7 @@ def hbox_bc(state,dim,t,qbc,auxbc,num_ghost=2):
     auxbc[0,-2] = auxbc[0,-1]
     auxbc[1,-1] = auxbc[1,-4]
     auxbc[1,-2] = auxbc[1,-1]
-def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_type='classic'):
+def setup(kernel_language='Python',use_petsc=False, outdir='./_output_cellwall', solver_type='classic'):
 
     if use_petsc:
         import clawpack.petclaw as pyclaw
@@ -79,7 +79,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 
     # Wall position
     state.problem_data['wall_position'] = nw
-    state.problem_data['wall_height'] = wall_height
+    state.problem_data['wall_height'] = 0#wall_height
     state.problem_data['fraction'] = alpha
     state.problem_data['dry_tolerance'] = 0.001
     state.problem_data['max_iteration'] = 1
@@ -91,7 +91,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     state.problem_data['cells_num'] = cells_number
 
 
-    solver = pyclaw.ClawSolver1D(shallow_1D_redistribute_wave_MB.shallow_fwave_hbox_dry_1d)
+    solver = pyclaw.ClawSolver1D(shallow_1D_redistribute_wave.shallow_fwave_dry_1d)
 
     solver.limiters = pyclaw.limiters.tvd.minmod
     solver.order = 1
@@ -128,18 +128,19 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     #state.aux[1, :] = xpxc # change this to actual delta x_p and xp is actuallly 1/N-1
     # shifting the grid such that barrier aligns with cell edge nw and pushing the small cells to the endpoint boundaries
     # so will need two hbox pairs: one at left endpoint and one at right endpoint
-    state.aux[1, nw-1] = alpha * xpxc
-    state.aux[1, nw] = (1 - alpha) * xpxc
+    #state.aux[1, nw-1] = alpha * xpxc
+    #state.aux[1, nw] = (1 - alpha) * xpxc
     state.q[0, :] = -0.3 - state.aux[0, :]
     #state.q[0, nw:nw+2] = 0
-    state.q[0,:30] += 0.5
+    state.q[0,:10] += 0.5
+    state.q[0,nw:] = 0
     state.q[0,:] = state.q[0,:].clip(min=0)
     state.q[1,:] = 0
 
 
     claw = pyclaw.Controller()
     claw.keep_copy = True
-    claw.tfinal = 1.0
+    claw.tfinal = 0.25
     claw.solution = pyclaw.Solution(state, domain)
     claw.solver = solver
     # claw.setplot = setplot
@@ -176,7 +177,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 # get the solution q and capacity array and give out the mass
     print("change in water vol",((numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))  - (numpy.sum(claw.frames[-1].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0)))/numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))
     plot_kargs = {'problem_data':state.problem_data}
-    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots_zerowidth_wall',iplot=False, htmlplot=True, **plot_kargs)
+    plot(setplot="./setplot_h_box_wave.py",outdir='./_output_cellwall',plotdir='./plots_actual',iplot=False, htmlplot=True, **plot_kargs)
 
 #setplot="./setplot_h_box_wave.py"
 

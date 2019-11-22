@@ -37,6 +37,7 @@ is the gravitational acceleration.
 # ============================================================================
 
 import numpy as np
+import pdb
 
 num_eqn = 2
 num_waves = 2
@@ -193,6 +194,233 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
 
     return fw
 
+def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
+    mwaves = 3
+    maxiter = 1
+    delh = hR-hL
+    delhu = huR-huL
+    delphi = phiR-phiL
+    delb = bR-bL
+    #delP = pR - pL
+    delnorm = delh**2 + delphi**2
+
+    hm, s1m, s2m, rare1, rare2 = riemanntype(hL, hR, uL, uR, 1, drytol, g)
+    sE1 = min(sE1,s2m) #!Modified Einfeldt speed
+    sE2 = max(sE2,s1m) #!Modified Eindfeldt speed
+
+    hstarHLL = max((huL-huR+sE2*hR-sE1*hL)/(sE2-sE1),0) # middle state in an HLL solve
+    lambda2 = 0
+    rarecorrectortest = False
+    rarecorrector = False
+    if rarecorrectortest == True:
+       sdelta=sE2-sE1
+       raremin = 0.5
+       raremax = 0.9
+       if rare1 == True and sE1*s1m < 0:
+           raremin=0.2
+       if rare2 == True and sE2*s2m < 0:
+           raremin=0.2
+       if rare1 == True or rare2 == True:
+          #see which rarefaction is larger
+          rare1st = 3 * (np.sqrt(g*hL)-np.sqrt(g*hm))
+          rare2st= 3 * (np.sqrt(g*hR)-np.sqrt(g*hm))
+          if max(rare1st,rare2st) > raremin*sdelta and max(rare1st,rare2st) < raremax*sdelta:
+              rarecorrector = True
+              if rare1st > rare2st:
+                  lambda2 = s1m
+              elif rare2st > rare1st:
+                  lambda2 = s2m
+              else:
+                  lambda2=0.5*(s1m+s2m)
+    if hstarHLL < min(hL,hR)/5:
+        rarecorrector= False
+    lamb = np.asarray([sE1, lambda2, sE2])
+    r = np.zeros((3,mwaves))
+    for mw in range(mwaves):
+        r[0,mw]=1
+        r[1,mw]=lamb[mw]
+        r[2,mw]=(lamb[mw])**2
+
+    if rarecorrector == False:
+        lambda2 = 0.5*(lamb[0]+lamb[2])
+#         lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
+        r[0,1]=0
+        r[1,1]=0
+        r[2,1]=1
+#     !determine the steady state wave -------------------
+#      !criticaltol = 1.d-6
+#      ! MODIFIED:
+    criticaltol = max(drytol*g, 1e-6)
+    criticaltol_2 = np.sqrt(criticaltol)
+    deldelh = -delb
+    deldelphi = -0.5 * (hR + hL) * (g * delb)
+
+#     !determine a few quanitites needed for steady state wave if iterated
+    hLstar=hL
+    hRstar=hR
+    uLstar=uL
+    uRstar=uR
+    huLstar=uLstar*hLstar
+    huRstar=uRstar*hRstar
+
+    #!iterate to better determine the steady state wave
+    convergencetol=1e-6
+    for iter in range(maxiter):
+    #!determine steady state wave (this will be subtracted from the delta vectors)
+        if min(hLstar,hRstar) < drytol and rarecorrector==True:
+            rarecorrector= False
+            hLstar=hL
+            hRstar=hR
+            uLstar=uL
+            uRstar=uR
+            huLstar=uLstar*hLstar
+            huRstar=uRstar*hRstar
+            lambda2 = 0.5*(lamb[1]+lamb[3])
+#           lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
+            r[0,1]=0
+            r[1,1]=0
+            r[2,1]=1
+        hbar =  max(0.5*(hLstar+hRstar),0)
+        s1s2bar = 0.25*(uLstar+uRstar)**2 - g*hbar
+        s1s2tilde= max(0,uLstar*uRstar) - g*hbar
+
+        sonic = False
+        if abs(s1s2bar) <= criticaltol:
+            sonic = True
+            print("first cause")
+        elif s1s2bar*s1s2tilde <= criticaltol**2:
+            sonic = True
+            print("Second cause")
+        elif s1s2bar*sE1*sE2 <= criticaltol**2:
+            sonic = True
+            print("third cause")
+        elif min(abs(sE1),abs(sE2)) < criticaltol_2:
+            sonic = True
+            print("fourth cause")
+        elif sE1 <  criticaltol_2 and s1m > -criticaltol_2:
+            sonic = True
+            print("fifth cause")
+            print(sE1,s1m)
+        elif sE2 > -criticaltol_2 and s2m <  criticaltol_2:
+            sonic = True
+            print("sixth cause")
+        elif (uL+np.sqrt(g*hL))*(uR+np.sqrt(g*hR)) < 0:
+            sonic = True
+            print("seventh cause")
+        elif (uL- np.sqrt(g*hL))*(uR- np.sqrt(g*hR)) < 0:
+            sonic = True
+            print("eigth cause")
+
+#        !find jump in h, deldelh
+        if sonic==True:
+            deldelh =  -delb
+        else:
+            deldelh = delb*g*hbar/s1s2bar
+#        !find bounds in case of critical state resonance, or negative states
+        if sE1 < -criticaltol and sE2 > criticaltol:
+            deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE2)
+            deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE1)
+        elif sE1 >= criticaltol:
+            deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE1)
+            deldelh = max(deldelh,-hL)
+        elif sE2 < -criticaltol:
+            deldelh = min(deldelh,hR)
+            deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE2)
+
+#        ! adjust deldelh for well-balancing of atmospheric pressure difference
+    #    deldelh = deldelh - delP/(rho*g)
+
+#        !find jump in phi, deldelphi
+        if sonic == True:
+            deldelphi = -g*hbar*delb
+        else:
+            deldelphi = -delb*g*hbar*s1s2tilde/s1s2bar
+#        !find bounds in case of critical state resonance, or negative states
+        deldelphi=min(deldelphi,g*max(-hLstar*delb,-hRstar*delb))
+        deldelphi=max(deldelphi,g*min(-hLstar*delb,-hRstar*delb))
+        deldelphi = deldelphi # - hbar * delp / rho
+
+        delt = np.zeros(3)
+        delt[0]=delh-deldelh
+        delt[1]=delhu
+        delt[2]=delphi-deldelphi
+
+#        !Determine determinant of eigenvector matrix========
+        det1=r[0,0]*(r[1,1]*r[2,2]-r[1,2]*r[2,1])
+        det2=r[0,1]*(r[1,0]*r[2,2]-r[1,2]*r[2,0])
+        det3=r[0,2]*(r[1,0]*r[2,1]-r[1,1]*r[2,0])
+        determinant=det1-det2+det3
+
+
+#        !solve for beta(k) using Cramers Rule=================
+        A = np.zeros((3,3))
+        beta = np.zeros(3)
+        for k in range(3):
+            for mw in range(3):
+                A[0,mw]=r[0,mw]
+                A[1,mw]=r[1,mw]
+                A[2,mw]=r[2,mw]
+
+            A[0,k]=delt[0]
+            A[1,k]=delt[1]
+            A[2,k]=delt[2]
+            det1=A[0,0]*(A[1,1]*A[2,2]-A[1,2]*A[2,1])
+            det2=A[0,1]*(A[1,0]*A[2,2]-A[1,2]*A[2,0])
+            det3=A[0,2]*(A[1,0]*A[2,1]-A[1,1]*A[2,0])
+            beta[k]=(det1-det2+det3)/determinant
+
+        if abs(delt[0]**2+delt[2]**2-delnorm) < convergencetol:
+            break
+        delnorm = delt[0]**2+delt[2]**2
+        # !find new states qLstar and qRstar on either side of interface
+        hLstar=hL
+        hRstar=hR
+        uLstar=uL
+        uRstar=uR
+        huLstar=uLstar*hLstar
+        huRstar=uRstar*hRstar
+        for mw in range(mwaves):
+            if lamb[mw] < 0:
+                hLstar= hLstar + beta[mw]*r[0,mw]
+                huLstar= huLstar + beta[mw]*r[1,mw]
+        for mw in range(mwaves): # mw=mwaves,1,-1
+            if lamb[mwaves-mw-1] > 0:
+                hRstar= hRstar - beta[mw]*r[0,mw]
+                huRstar= huRstar - beta[mw]*r[1,mw]
+
+        if hLstar > drytol:
+            uLstar=huLstar/hLstar
+        else:
+            hLstar=max(hLstar,0)
+            uLstar=0
+        if hRstar > drytol:
+            uRstar=huRstar/hRstar
+        else:
+            hRstar=max(hRstar,0)
+            uRstar=0
+
+#      enddo ! end iteration on Riemann problem
+    sw = np.zeros(mwaves)
+    fw = np.zeros((3,mwaves))
+    for mw in range(mwaves):
+        sw[mw]=lamb[mw]
+        fw[0,mw]=beta[mw]*r[1,mw]
+        fw[1,mw]=beta[mw]*r[2,mw]
+        fw[2,mw]=beta[mw]*r[1,mw]
+#      !find transverse components (ie huv jumps).
+      # ! MODIFIED from 5.3.1 version
+      # fw(3,1)=fw(3,1)*vL
+      # fw(3,3)=fw(3,3)*vR
+      # fw(3,2)= 0.d0
+
+    # hustar_interface = huL + fw[0,0]  #  = huR - fw(1,3)
+    # if hustar_interface <= 0.0:
+    #     fw[2,0] = fw[2,0] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
+    # else:
+    #     fw[2,2] = fw[2,2] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
+    print("transonic",sonic)
+    return fw, rarecorrector, sE1, sE2 # note that this is fw for [h,hu,b]
+
 
 def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
 
@@ -243,6 +471,7 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     aux_wall[0,1] = 0.5*(aux_wall[0,0] + aux_wall[0,2]) + wall_height
 
     L2R, R2L, hstarL, hstarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
+
     if (L2R==True and R2L==True):
         q_wall[0,1] = 0.5*(hstarL+hstarR)
         q_wall[1,1] = q_wall[0,1]  * (q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
@@ -315,11 +544,15 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             sRoe2 = uhat + chat
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
-            fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+
+            fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+            if rarecorrector == True:
+                s1 = sE1
+                s2 = sE2
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:,0] * wall[0]
-            fwave[:,1,i] = fw[:,1] * wall[1]
+            fwave[:,0,i] = fw[:2,0] * wall[0]
+            fwave[:,1,i] = fw[:2,1] * wall[1]
             # print("fw: ", fw)
 
             for mw in range(num_waves):
@@ -327,6 +560,17 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                     amdq[:,i] += fwave[:,mw,i]
                 elif (s[mw,i] > 0):
                     apdq[:,i] += fwave[:,mw,i]
+                else:
+                    amdq[:,i] += 0.5 * fwave[:,mw,i]
+                    apdq[:,i] += 0.5 * fwave[:,mw,i]
+            if rarecorrector == True:
+                if 0.5*(s1+s2) < 0:
+                    amdq[:,i] += fw[:2,2]
+                elif 0.5*(s1+s2) > 0:
+                    apdq[:,i] += fw[:2,2]
+                else:
+                    amdq[:,i] += 0.5 * fw[:2,2]
+                    apdq[:,i] += 0.5 * fw[:2,2]
 
 
     s_wall[0] = np.min(s)
@@ -346,7 +590,6 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             amdq_wall[:] += gamma[:,mw]
         elif (s_wall[mw] > 0):
             apdq_wall[:] += gamma[:,mw]
-
     return wave_wall, s_wall, amdq_wall, apdq_wall
 
 
@@ -360,8 +603,7 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
     num_rp = q_l.shape[1]
     num_eqn = 2
     num_waves = 2
-    num_ghost = 2
-
+#    num_ghost = 2
 
     # Output arrays
     fwave = np.zeros((num_eqn, num_waves, num_rp))
@@ -432,12 +674,15 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
             sRoe2 = uhat + chat
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
-            fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
-
+            fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+            if rarecorrector == True:
+                s1 = sE1
+                s2 = sE2
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:,0] * wall[0]
-            fwave[:,1,i] = fw[:,1] * wall[1]
+            fwave[:,0,i] = fw[:2,0] * wall[0]
+            fwave[:,1,i] = fw[:2,1] * wall[1]
+
 
             for mw in range(num_waves):
                 if (s[mw,i] < 0):
@@ -447,18 +692,21 @@ def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
                 else:
                     amdq[:,i] += 0.5 * fwave[:,mw,i]
                     apdq[:,i] += 0.5 * fwave[:,mw,i]
-
-    nw = problem_data['wall_position']
-    iw = nw + num_ghost - 1
-    print(amdq[:,iw],apdq[:,iw])
-    if problem_data['zero_width'] == True:
-        nw = problem_data['wall_position']
+            if rarecorrector == True:
+                if 0.5*(s1+s2) < 0:
+                    amdq[:,i] += fw[:2,2]
+                elif 0.5*(s1+s2) > 0:
+                    apdq[:,i] += fw[:2,2]
+                else:
+                    amdq[:,i] += 0.5 * fw[:2,2]
+                    apdq[:,i] += 0.5 * fw[:2,2]
+    if True == True:
         wall_height = problem_data['wall_height']
-        iw = nw + num_ghost - 1
-        #fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,iw:iw+1].copy(), q_r[:,iw:iw+1].copy(), aux_l[0,iw:iw+1].copy(), aux_r[0,iw:iw+1].copy(), wall_height, drytol, g, maxiter)
-
-
+        iw = 2
+        fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,[2]].copy(), q_r[:,[2]].copy(), aux_l[0,2].copy(), aux_r[0,2].copy(), wall_height, drytol, g, maxiter)
+    #print("hbox",q_l)
     return fwave, s, amdq, apdq
+
 
 def f(Q, problem_data):
     ############## the shallow water flux vector ##############
@@ -466,7 +714,7 @@ def f(Q, problem_data):
     drytol = problem_data['dry_tolerance']
     F = np.zeros(2)
 
-    if Q[0] < drytol:
+    if Q[0] < 10**(-3):
         return F
     else:
         F[0] = Q[1]
@@ -475,9 +723,7 @@ def f(Q, problem_data):
     #print("F=",F)
     return F
 
-
-def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
-    # print("shallow_fwave_hbox_dry_1d")
+def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
     g = problem_data['grav']
     nw = problem_data['wall_position']
     wall_height = problem_data['wall_height']
@@ -486,8 +732,9 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
     alpha = problem_data['fraction']
 
 
-    if False == False: #problem_data['arrival_state'] == False:
-        #MD = q_r[1,:]-q_l[1,:]
+
+    if False == False:
+        MD = q_r[1,:]-q_l[1,:]
         num_rp = q_l.shape[1]
         num_eqn = 2
         num_waves = 2
@@ -500,96 +747,26 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
         amdq = np.zeros((num_eqn, num_rp))
         apdq = np.zeros((num_eqn, num_rp))
 
-        q_hbox = np.zeros((2,2))
-        aux_hbox = np.zeros((1,2))
+##################################
 
-        ratio1 = 2.0 * alpha / (1 + alpha)
-        ratio2 = 2.0 * (1 - alpha) / (2 - alpha)
+        # hbox setup:
+        q_hbox = np.zeros((2,4))
+        aux_hbox = np.zeros((1,4))
 
-        q_hbox[:,0] = ratio1 * q_r[:,iw-1] + (1 - ratio1) * q_r[:,iw-2]
-        aux_hbox[0,0] = ratio1 * aux_r[0,iw-1] + (1 - ratio1) * aux_r[0,iw-2]
-        q_hbox[:,1] = (ratio2) * q_l[:,iw+1] + (1-ratio2) * q_l[:,iw+2]
-        aux_hbox[0,1] = (ratio2) * aux_l[0,iw+1] + (1-ratio2) * aux_l[0,iw+2]
+        q_hbox[:,0] = (1-alpha)*q_l[:,iw-2] + alpha*q_r[:,iw-2] #(ratio2) * q_l[:,iw+1] + (1-ratio2) * q_l[:,iw+2]
+        aux_hbox[0,0] = (1-alpha)*aux_l[0,iw-2] + alpha*aux_r[0,iw-2] #(ratio2) * aux_l[0,iw+1] + (1-ratio2) * aux_l[0,iw+2]
+        q_hbox[:,1] = (1-alpha)*q_l[:,iw-1] + alpha*q_r[:,iw-1]
+        aux_hbox[0,1] = (1-alpha)*aux_l[0,iw-1] + alpha*aux_r[0,iw-1]
 
-        #q_M = alpha*q_hbox[:,0] + (1-alpha)*q_hbox[:,1]
-        #aux_M = alpha*aux_l[0,iw] +  (1-alpha)*aux_r[0,iw]
-        # if q_hbox[0,0] <= drytol:
-        #     uL=0
-        # else:
-        #     uL = q_hbox[1,0]/q_hbox[0,0]
-        # if q_hbox[0,1] <= drytol:
-        #     uR = 0
-        # else:
-        #     uR = q_hbox[1,1]/q_hbox[0,1]
-        # hsL2R,sm1L2R,sm2L2R,r1,r2 = riemanntype(q_hbox[0,0],q_hbox[0,0],uL,-uL,maxiter,drytol,g)
-        # hsR2L,sm1R2L,sm2R2L,rr1,rr2= riemanntype(q_hbox[0,1],q_hbox[0,1],uR,-uR,maxiter,drytol,g)
-        # print("hsL2R is ", hsL2R)
-        # print("wall height is ", wall_height)
-        # print(q_l[:,iw])
+        q_hbox[:,2] = (1-alpha)*q_r[:,iw] + alpha*q_r[:,iw+1]
+        aux_hbox[0,2] = (1-alpha)*aux_r[0,iw] + alpha*aux_r[0,iw+1]
+        q_hbox[:,3] = (1-alpha)*q_l[:,iw+2] + alpha*q_r[:,iw+2]
+        aux_hbox[0,3] = (1-alpha)*aux_l[0,iw+2] + alpha*aux_r[0,iw+2]
 
-        # height_ori = alpha * q_l[:,iw] + (1-alpha)* q_r[:,iw]
-        #
-        # if hsL2R+aux_hbox[0,0] > wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]) and hsR2L+aux_hbox[0,1] < wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]):
-        #     q_M[0] = (hsL2R+aux_hbox[0,0]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))
-        #     #q_M[0] -=  q_M[0]- q_l[0,iw]*alpha- q_r[0,iw]*(1-alpha)
-        #     q_M[1] = q_M[0] * (sm2L2R)
-        #     print("q_M[1]",q_M[1])
-        #     print("iam cllaed")
-        #     #print(q_M[0]*(2/99) - q_l[0,iw]*alpha*(2/99) - q_r[0,iw]*(1-alpha)*(2/99))
-        #     q_r[0,iw-1] = q_M[0]#(hsL2R+aux_hbox[0,0]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))#q_M[0]
-        #     q_r[1,iw-1] = q_M[0] * (sm2L2R)#q_M[1]
-        #     print(q_r[0,iw-1], q_M[0])
-        #
-        #     q_l[0,iw+1] = q_M[0]#(hsL2R+aux_hbox[0,0]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))#q_M[0]
-        #     q_l[1,iw+1] = q_M[0] * (sm2L2R)#q_M[1]
-        #     aux_r[0,iw-1] = aux_M
-        #     aux_l[0,iw+1] = aux_M
-        #
-        # if hsL2R+aux_hbox[0,0] < wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]) and hsR2L+aux_hbox[0,1] > wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]):
-        #     q_M[0] = (hsR2L+aux_hbox[0,1]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))
-        #     #q_M[0] -= q_M[0] - q_l[0,iw]*alpha - q_r[0,iw]*(1-alpha)
-        #     q_M[1] = q_M[0] * (sm1R2L)
-        #     #print(q_M[0]*(2/99) - q_l[0,iw]*alpha*(2/99) - q_r[0,iw]*(1-alpha)*(2/99))
-        #     q_r[0,iw-1] = q_M[0]#(hsR2L+aux_hbox[0,1]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))#q_M[0]
-        #     print(q_r[0,iw-1], q_M[0])
-        #     q_r[1,iw-1] = q_M[0] * (sm1R2L)#q_M[1]
-        #     q_l[0,iw+1] = q_M[0] #(hsR2L+aux_hbox[0,1]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1])) #q_M[0]
-        #     q_l[1,iw+1] = q_M[0] * (sm1R2L)#q_M[1]
-        #     aux_r[0,iw-1] = aux_M
-        #     aux_l[0,iw+1] = aux_M
-        # #
-        # if hsL2R+aux_hbox[0,0] > wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]) and hsR2L+aux_hbox[0,1] > wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]):
-        #     q_M[0] = 0.5*(hsL2R + hsR2L)+0.5*(aux_hbox[0,0]+aux_hbox[0,1]) - (wall_height+0.5*(aux_hbox[0,0]+aux_hbox[0,1]))
-        #     #q_M[0] -= q_M[0] - q_l[0,iw]*alpha - q_r[0,iw]*(1-alpha)
-        #     q_M[1] = q_M[0] * 0.5 * (alpha*(sm2L2R)+(1-alpha)*(sm1R2L))
-        # #    print(q_M[0]*(2/99) - q_l[0,iw]*alpha*(2/99) - q_r[0,iw]*(1-alpha)*(2/99))
-        #     q_r[0,iw-1] = q_M[0]
-        #     print(q_r[0,iw-1], q_M[0])
-        #
-        #     q_r[1,iw-1] = q_M[1]
-        #     q_l[0,iw+1] = q_M[0]
-        #     q_l[1,iw+1] = q_M[1]
-        #     aux_r[0,iw-1] = aux_M
-        #     aux_l[0,iw+1] = aux_M
-        # #
-        # if hsL2R + aux_hbox[0,0] < wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]) and hsR2L+aux_hbox[0,1] < wall_height + 0.5*(aux_hbox[0,0]+aux_hbox[0,1]):
-        #     #q_M[0] = alpha*q_l[0,iw] + (1-alpha)*q_r[0,iw]
-        #     #q_M[1] = alpha*q_l[1,iw] + (1-alpha)*(-1)*q_r[1,iw]
-        #     q_r[:,iw-1] = q_l[:,iw-1]
-        #     q_r[1,iw-1] *= -1
-        #     q_l[:,iw+1] = q_r[:,iw+1]
-        #     q_l[1,iw+1] *= -1
-        #     aux_r[0,iw-1] = aux_l[0,iw-1]
-        #     aux_l[0,iw+1] = aux_r[0,iw+1]
-        # #
-        #
-        #print("q_M is  ", q_M)
 
-        # q_l[:,iw] = q_hbox[:,0]
-        # q_r[:,iw] = q_hbox[:,1]
-        # aux_l[0,iw] = aux_hbox[0,0]
-        # aux_r[0,iw] = aux_hbox[0,1]
+##############################################
 
+        # regular cells setup and solving:
         for i in range(num_rp):
             hL = q_l[0,i]
             hR = q_r[0,i]
@@ -597,21 +774,11 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
             huR = q_r[1,i]
             bL = aux_l[0,i]
             bR = aux_r[0,i]
-            # if i == iw-1:
-            #     hR = q_M[0]
-            #     huR = q_M[1]
-            # if i == iw+1:
-            #     hL = q_M[0]
-            #     huL = q_M[1]
-#            print(q_r[:,iw-1], q_M)
 
-#            print(q_l[:,iw+1], q_M)
-             ####### trace the m values here ######
             # Check wet/dry states
             if (hR > drytol): # right state is not dry
                 uR = huR / hR
                 phiR = 0.5 * g * hR**2 + huR**2 / hR
-                # print(hR)
             else:
                 hR = 0.0
                 huR = 0.0
@@ -662,18 +829,16 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
                 sRoe2 = uhat + chat
                 s1 = min(sL, sRoe1)
                 s2 = max(sR, sRoe2)
-                # if i == iw-1 or iw or iw+1:
-                #     if hR-hL<=drytol:
-                #         s1 = -np.sqrt(g*0.5*(hR+hL))
-                #         s2 = np.sqrt(g*0.5*(hR+hL))
-                #     else:
-                #         s1 = (huR-huL)/(2*(hR-hL)) - np.sqrt(g*0.5*(hR+hL))
-                #         s2 = (huR-huL)/(2*(hR-hL)) + np.sqrt(g*0.5*(hR+hL))
-                fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
-                s[0,i] = sL * wall[0]
-                s[1,i] = sR * wall[1]
-                fwave[:,0,i] = fw[:,0] * wall[0]
-                fwave[:,1,i] = fw[:,1] * wall[1]
+
+                fw, rarecorrector, sE1, sE2 = riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+                if rarecorrector == True:
+                    s1 = sE1
+                    s2 = sE2
+                s[0,i] = s1 * wall[0]
+                s[1,i] = s2 * wall[1]
+                fwave[:,0,i] = fw[:2,0] * wall[0]
+                fwave[:,1,i] = fw[:2,1] * wall[1]
+
 
                 for mw in range(num_waves):
                     if (s[mw,i] < 0):
@@ -683,18 +848,44 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
                     else:
                         amdq[:,i] += 0.5 * fwave[:,mw,i]
                         apdq[:,i] += 0.5 * fwave[:,mw,i]
+                if rarecorrector == True:
+                    if 0.5*(s1+s2) < 0:
+                        amdq[:,i] += fw[:2,2]
+                    elif 0.5*(s1+s2) > 0:
+                        apdq[:,i] += fw[:2,2]
+                    else:
+                        amdq[:,i] += 0.5 * fw[:2,2]
+                        apdq[:,i] += 0.5 * fw[:2,2]
 
+#################
 
-        fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,iw].copy(), q_r[:,iw].copy(), aux_l[0,iw].copy(), aux_r[0,iw].copy(), wall_height, drytol, g, maxiter)
-    #    print((apdq[:,iw]+amdq[:,iw+1])-(apdq[:,iw-1]+amdq[:,iw]), alpha*2/(num_rp))
-        #fwave[:,:,iw-1], s[:,iw-1], amdq[:,iw-1], apdq[:,iw-1] = redistribute_fwave(q_l[:,iw-1].copy(), q_r[:,iw-1].copy(), aux_l[0,iw-1].copy(), aux_r[0,iw-1].copy(), wall_height, drytol, g, maxiter)
-        #fwave[:,:,iw+1], s[:,iw+1], amdq[:,iw+1], apdq[:,iw+1] = redistribute_fwave(q_l[:,iw+1].copy(), q_r[:,iw+1].copy(), aux_l[0,iw+1].copy(), aux_r[0,iw+1].copy(), wall_height, drytol, g, maxiter)
-#          fwave[:,:,iw-1], s[:,iw-1], amdq[:,iw-1], apdq[:,iw-1] = redistribute_fwave(qLLRR[:,0].copy(),q_hbox[:,0].copy(),auxLLRR[0,0].copy(), aux_hbox[0,0].copy(),0,drytol,g,maxiter)
- #       fwave[:,:,iw+1], s[:,iw+1], amdq[:,iw+1], apdq[:,iw+1] = redistribute_fwave(q_hbox[:,1].copy(),qLLRR[:,1].copy(),aux_hbox[0,1].copy(), auxLLRR[0,1].copy(),0,drytol,g,maxiter)
+        dxdt = dx/dt
 
-    #    print("mass moemntum diff: ",np.amax(MD[:]-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
+##################
+        fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,iw].copy(),q_r[:,iw].copy(),aux_l[0,iw].copy(), aux_r[0,iw].copy(),wall_height,drytol,g,maxiter)
 
-        return fwave, s, amdq, apdq , q_hbox, aux_hbox #, q_M, aux_
+    #    amdq[:,iw] = (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_l[:,iw],problem_data)
+    #    apdq[:,iw] = f(q_l[:,iw+1],problem_data) - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])
 
-    if problem_data['arrival_state'] == True:
-        return redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
+        #hboxes riemann problem solving for flux:
+        amdq_hbox = np.zeros((2,4))
+        apdq_hbox = np.zeros((2,4))
+        amdq_hbox[:,1] = amdq[:,iw] #(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_hbox[:,1],problem_data) #redistribute_fwave(q_hbox[:,[1]].copy(), q_hbox[:,[2]].copy(), aux_hbox[0,1].copy(), aux_hbox[0,2].copy(), wall_height, drytol, g, maxiter)
+        apdq_hbox[:,2] = apdq[:,iw] # f(q_hbox[:,2],problem_data) -(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])
+
+        amdq_hbox[:,2] = amdq[:,iw+1] + f(q_l[:,iw+1],problem_data) - f(q_hbox[:,2],problem_data)
+        apdq_hbox[:,3] = apdq[:,iw+1] + f(q_hbox[:,3],problem_data) - f(q_r[:,iw+1],problem_data)
+        amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * ((1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
+#pdb module debuggger
+        #print(amdq_hbox[:,3])
+        amdq_hbox[:,0] = amdq[:,iw-1] + f(q_r[:,iw-2],problem_data) - f(q_hbox[:,0],problem_data)
+        apdq_hbox[:,1] = apdq[:,iw-1] + f(q_hbox[:,1],problem_data) - f(q_r[:,iw-1],problem_data)
+
+        apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
+#        print("amdq",amdq)
+    #    print("apdq_hbox",apdq_hbox)
+
+        print("mass moemntum diff: ",(MD-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
+    #    print("actual",q_l)
+
+        return fwave, s, amdq, apdq, q_hbox, amdq_hbox, apdq_hbox

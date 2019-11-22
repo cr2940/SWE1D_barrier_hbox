@@ -1,0 +1,14 @@
+2019-11-20 14:10:22,269 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.0
+2019-11-20 14:10:22,269 pyclaw.controller INFO CLAW: 418 - Solution 0 computed for time t=0.000000
+2019-11-20 14:10:22,652 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.025
+2019-11-20 14:10:22,652 pyclaw.controller INFO CLAW: 418 - Solution 1 computed for time t=0.025000
+2019-11-20 14:10:23,077 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.05
+2019-11-20 14:10:23,078 pyclaw.controller INFO CLAW: 418 - Solution 2 computed for time t=0.050000
+2019-11-20 14:10:23,499 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.07500000000000001
+2019-11-20 14:10:23,499 pyclaw.controller INFO CLAW: 418 - Solution 3 computed for time t=0.075000
+2019-11-20 14:10:23,922 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.1
+2019-11-20 14:10:23,922 pyclaw.controller INFO CLAW: 418 - Solution 4 computed for time t=0.100000
+2019-11-20 14:10:25,988 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.125
+2019-11-20 14:10:25,988 pyclaw.controller INFO CLAW: 418 - Solution 5 computed for time t=0.125000
+2019-11-20 14:14:51,519 pyclaw.fileio INFO CLAW: 301 - Wrote out solution in format ascii for time t=0.12734089037015367
+2019-11-20 14:14:51,519 pyclaw.controller INFO CLAW: 418 - Solution 6 computed for time t=0.127341

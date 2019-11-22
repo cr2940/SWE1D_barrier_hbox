@@ -53,6 +53,7 @@ def hbox_bc(state,dim,t,qbc,auxbc,num_ghost=2):
     auxbc[0,-2] = auxbc[0,-1]
     auxbc[1,-1] = auxbc[1,-4]
     auxbc[1,-2] = auxbc[1,-1]
+
 def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_type='classic'):
 
     if use_petsc:
@@ -69,13 +70,35 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     wall_height = float(params['wall_height'])
 
     x = pyclaw.Dimension(xlower, xupper, cells_number, name='x')
+    del_xp = (xupper-xlower)/(cells_number-1)
+    del_xc = (xupper-xlower)/(cells_number)
+
     domain = pyclaw.Domain(x)
     state = pyclaw.State(domain, 2, 2)
+    # shifting the domain to physical setup
     xc = state.grid.x.centers
+    for m in range(len(xc)):
+        if m < nw-1:
+            xc[m] = (2*m+1)/2 * del_xp
+        if m == nw-1:
+            xc[m] = (m+(1/2)*alpha) * del_xp
+        if m == nw:
+            xc[m] = (m+(1/2)*(1+alpha)) * del_xp
+        if m >= nw+1:
+            xc[m] = (2*(m-1)+1)/2 * del_xp
+
+    xn = state.grid.x.nodes
+    for k in range(len(xn)):
+        if k < nw:
+            xn[k] = k*del_xp
+        if k == nw:
+            xn[k] = (k+alpha)*del_xp
+        if k > nw:
+            xn[k] = (k-1) * del_xp
 
     # Gravitational constant
     state.problem_data['grav'] = 9.8
-    state.problem_data['sea_level'] = 0.0
+    state.problem_data['sea_level'] = -0.3
 
     # Wall position
     state.problem_data['wall_position'] = nw
@@ -123,23 +146,26 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     # state.aux[0,:nw-1] = bathymetry[:nw-1]
     # state.aux[0,nw-1] = bathymetry[nw-1]
     # state.aux[0,nw:] = bathymetry[nw-1:]
-#    state.aux[0, :] = numpy.linspace(-0.8, -0.4, xc.shape[0], endpoint=True)
-    #state.aux[1,:] = numpy.zeros(xc.shape)
-    #state.aux[1, :] = xpxc # change this to actual delta x_p and xp is actuallly 1/N-1
-    # shifting the grid such that barrier aligns with cell edge nw and pushing the small cells to the endpoint boundaries
+    # state.aux[0, :] = numpy.linspace(-0.8, -0.4, xc.shape[0], endpoint=True)
+    state.aux[1,:] = numpy.zeros(xc.shape)
+    state.aux[1, :] = xpxc # change this to actual delta x_p and xp is actuallly 1/N-1
+    # # shifting the grid such that barrier aligns with cell edge nw and pushing the small cells to the endpoint boundaries
     # so will need two hbox pairs: one at left endpoint and one at right endpoint
     state.aux[1, nw-1] = alpha * xpxc
     state.aux[1, nw] = (1 - alpha) * xpxc
     state.q[0, :] = -0.3 - state.aux[0, :]
     #state.q[0, nw:nw+2] = 0
-    state.q[0,:30] += 0.5
+    state.q[0,nw:] = 0
+
+    state.q[0,:20] += 0.5
     state.q[0,:] = state.q[0,:].clip(min=0)
     state.q[1,:] = 0
+    print(state.q[0,:])
 
 
     claw = pyclaw.Controller()
     claw.keep_copy = True
-    claw.tfinal = 1.0
+    claw.tfinal = 0.25
     claw.solution = pyclaw.Solution(state, domain)
     claw.solver = solver
     # claw.setplot = setplot
@@ -176,7 +202,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 # get the solution q and capacity array and give out the mass
     print("change in water vol",((numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))  - (numpy.sum(claw.frames[-1].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0)))/numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))
     plot_kargs = {'problem_data':state.problem_data}
-    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots_zerowidth_wall',iplot=False, htmlplot=True, **plot_kargs)
+    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots',iplot=False, htmlplot=True, **plot_kargs)
 
 #setplot="./setplot_h_box_wave.py"
 
