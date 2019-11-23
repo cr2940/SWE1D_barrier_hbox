@@ -184,22 +184,19 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, th
         hm,um,s1m,s2m,rare1,rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
         lamb[0] = s1
         lamb[1] = s2
-        if rare1 == True or rare2 == True:
+        #print(rare1,rare2)
+        #if rare1 == True or rare2 == True:
     #see which rarefaction is larger
-            raremin = 0.2
-            raremax = 0.9
-            rare1st = 3 * (np.sqrt(g*hL)-np.sqrt(g*hm))
-            rare2st= 3 * (np.sqrt(g*hR)-np.sqrt(g*hm))
-            if max(rare1st,rare2st) > raremin*(s2-s1) and max(rare1st,rare2st) < raremax*(s2-s1):
-                rarecorrector = True
-                if rare1st > rare2st:
-                    lamb[2] = s1m
-                elif rare2st > rare1st:
-                    lamb[2] = s2m
-                else:
-                    lamb[2]=0.5*(s1m+s2m)
+
+        sL = uL - np.sqrt(g * hL)
+        sR = uR + np.sqrt(g * hR)
+        if abs(s1m - sL) > 0.8*(s2-s1):
+            lamb[2] = s1m
+        elif abs(sR - s2m) > 0.8*(s2-s1):
+            lamb[2] = s2m
         else:
-            lamb[2] = 0
+            lamb[2]=0.5*(s1m+s2m)
+
 
     fw = np.zeros((num_eqn, num_waves))
 
@@ -214,6 +211,8 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, th
             r[0,mw]=1
             r[1,mw]=lamb[mw]
             r[2,mw]=(lamb[mw])**2
+
+        print(lamb[2])
 
 
         delt = np.zeros(3)
@@ -246,15 +245,15 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, th
             beta[k]=(det1-det2+det3)/determinant
 
         # 1st nonlinear wave
-        fw[0,0] = beta[0]
-        fw[1,0] = beta[0] * lamb[0]
+        fw[0,0] = beta[0] * lamb[0]
+        fw[1,0] = beta[0] * lamb[0]**2
 
-        fw[0,1] = beta[1]
-        fw[1,1] = beta[1] * lamb[1]
+        fw[0,1] = beta[1] * lamb[1]
+        fw[1,1] = beta[1] * lamb[1]**2
 
-        fw[0,2] = beta[2]
-        fw[1,2] = beta[2] * lamb[2]
-
+        fw[0,2] = beta[2] * lamb[2]
+        fw[1,2] = beta[2] * lamb[2]**2
+    # print(fw)
         return fw, lamb
 
     beta1 = (s2 * delhu - delphidecomp) / (s2 - s1)
@@ -267,7 +266,7 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, th
     # 2nd nonlinear wave
     fw[0,1] = beta2
     fw[1,1] = beta2 * s2
-
+    # print(fw)
     return fw, lamb
 
 # def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
@@ -651,18 +650,18 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                     s_fix[0,i] = s1 * wall[0]
                     s_fix[1,i] = s2 * wall[1]
                     s_fix[2,i] = lamb[2] * wall[0]
-                    fwave_fix[:,2,i] = fw[1:],2] * wall[0]
+                    fwave_fix[:,2,i] = fw[:,2] * wall[0]
                 if second_large_rare == True:
                     s_fix[0,i] = s1 * wall[0]
                     s_fix[1,i] = s2 * wall[1]
                     s_fix[2,i] = lamb[2] * wall[1]
-                    fwave_fix[:,2,i] = fw[1:,2] * wall[1]
-                fwave_fix[:,0,i] = fw[1:,0] * wall[0]
-                fwave_fix[:,1,i] = fw[1:,1] * wall[1]
+                    fwave_fix[:,2,i] = fw[:,2] * wall[1]
+                fwave_fix[:,0,i] = fw[:,0] * wall[0]
+                fwave_fix[:,1,i] = fw[:,1] * wall[1]
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[1:,0] * wall[0]
-            fwave[:,1,i] = fw[1:,1] * wall[1]
+            fwave[:,0,i] = fw[:,0] * wall[0]
+            fwave[:,1,i] = fw[:,1] * wall[1]
             # print("fw: ", fw)
             if third_wave == False:
                 for mw in range(num_waves):
@@ -684,19 +683,19 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             if third_wave == True:
                 for mw in range(3):
                     if (s_fix[mw,i] < 0):
-                        amdq[:,i] += fwave_fix[1:,mw,i]
+                        amdq[:,i] += fwave_fix[:,mw,i]
                     elif (s_fix[mw,i] > 0):
-                        apdq[:,i] += fwave_fix[1:,mw,i]
+                        apdq[:,i] += fwave_fix[:,mw,i]
                     else:
-                        amdq[:,i] += 0.5*fwave_fix[1:,mw,i]
-                        apdq[:,i] += 0.5*fwave_fix[1:,mw,i]
+                        amdq[:,i] += 0.5*fwave_fix[:,mw,i]
+                        apdq[:,i] += 0.5*fwave_fix[:,mw,i]
 
     s_wall[0] = min(np.min(s),np.min(s_fix))
     s_wall[1] = max(np.max(s),np.max(s_fix))
 
     if s_wall[1] - s_wall[0] != 0.0:
-        gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])+np.sum(fwave_fix[1,:,:])) - (np.sum(fwave[1,:,:])+np.sum(fwave_fix[2,:,:]))) / (s_wall[1] - s_wall[0])
-        gamma[0,1] = (np.sum(fwave[1,:,:])+np.sum(fwave_fix[2,:,:]) - s_wall[0] * (np.sum(fwave[0,:,:])+np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
+        gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])+np.sum(fwave_fix[0,:,:])) - (np.sum(fwave[1,:,:])+np.sum(fwave_fix[1,:,:]))) / (s_wall[1] - s_wall[0])
+        gamma[0,1] = (np.sum(fwave[1,:,:])+np.sum(fwave_fix[1,:,:]) - s_wall[0] * (np.sum(fwave[0,:,:])+np.sum(fwave[0,:,:]))) / (s_wall[1] - s_wall[0])
         gamma[1,0] = gamma[0,0] * s_wall[0]
         gamma[1,1] = gamma[0,1] * s_wall[1]
 
@@ -979,18 +978,18 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                         s_fix[0,i] = s1 * wall[0]
                         s_fix[1,i] = s2 * wall[1]
                         s_fix[2,i] = lamb[2] * wall[0]
-                        fwave_fix[:,2,i] = fw[1:,2] * wall[0]
+                        fwave_fix[:,2,i] = fw[:,2] * wall[0]
                     if second_large_rare == True:
                         s_fix[0,i] = s1 * wall[0]
                         s_fix[1,i] = s2 * wall[1]
                         s_fix[2,i] = lamb[2] * wall[1]
-                        fwave_fix[:,2,i] = fw[1:,2] * wall[1]
-                    fwave_fix[:,0,i] = fw[1:,0] * wall[0]
-                    fwave_fix[:,1,i] = fw[1:,1] * wall[1]
+                        fwave_fix[:,2,i] = fw[:,2] * wall[1]
+                    fwave_fix[:,0,i] = fw[:,0] * wall[0]
+                    fwave_fix[:,1,i] = fw[:,1] * wall[1]
                 s[0,i] = s1 * wall[0]
                 s[1,i] = s2 * wall[1]
-                fwave[:,0,i] = fw[1:,0] * wall[0]
-                fwave[:,1,i] = fw[1:,1] * wall[1]
+                fwave[:,0,i] = fw[:,0] * wall[0]
+                fwave[:,1,i] = fw[:,1] * wall[1]
             # print("fw: ", fw)
                 if third_wave == False:
                     for mw in range(num_waves):
@@ -1055,7 +1054,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
 #        print("amdq",amdq)
     #    print("apdq_hbox",apdq_hbox)
 
-        print("mass moemntum diff: ",(MD-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
+        # print("mass moemntum diff: ",(MD-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
     #    print("actual",q_l)
 
         return fwave, s, amdq, apdq, q_hbox, amdq_hbox, apdq_hbox
