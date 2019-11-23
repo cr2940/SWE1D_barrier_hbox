@@ -171,9 +171,35 @@ def shallow_fwave_1d(q_l, q_r, aux_l, aux_r, problem_data):
 
 
 
-def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
+def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, third_wave):
     num_eqn = 2
     num_waves = 2
+
+    lamb = np.zeros(3) # for third wave case, speeds
+
+    if third_wave == True:
+        num_waves += 1
+
+        hm,um,s1m,s2m,rare1,rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
+        lamb[0] = s1
+        lamb[1] = s2
+        if rare1 == True or rare2 == True:
+    #see which rarefaction is larger
+            raremin = 0.2
+            raremax = 0.9
+            rare1st = 3 * (np.sqrt(g*hL)-np.sqrt(g*hm))
+            rare2st= 3 * (np.sqrt(g*hR)-np.sqrt(g*hm))
+            if max(rare1st,rare2st) > raremin*(s2-s1) and max(rare1st,rare2st) < raremax*(s2-s1):
+                rarecorrector = True
+                if rare1st > rare2st:
+                    lamb[2] = s1m
+                elif rare2st > rare1st:
+                    lamb[2] = s2m
+                else:
+                    lamb[2]=0.5*(s1m+s2m)
+        else:
+            lamb[2] = 0
+
     fw = np.zeros((num_eqn, num_waves))
 
     delh = hR - hL
@@ -181,170 +207,19 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     delb = bR - bL
     delphidecomp = phiR - phiL + g * 0.5 * (hL + hR) * delb
 
-    beta1 = (s2 * delhu - delphidecomp) / (s2 - s1)
-    beta2 = (delphidecomp - s1 * delhu) / (s2 - s1)
+    if third_wave == True:
+        r = np.zeros((3,num_waves))
+        for mw in range(num_waves):
+            r[0,mw]=1
+            r[1,mw]=lamb[mw]
+            r[2,mw]=(lamb[mw])**2
 
-    # 1st nonlinear wave
-    fw[0,0] = beta1
-    fw[1,0] = beta1 * s1
-
-    # 2nd nonlinear wave
-    fw[0,1] = beta2
-    fw[1,1] = beta2 * s2
-
-    return fw
-
-def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
-    mwaves = 3
-    maxiter = 1
-    delh = hR-hL
-    delhu = huR-huL
-    delphi = phiR-phiL
-    delb = bR-bL
-    #delP = pR - pL
-    delnorm = delh**2 + delphi**2
-
-    hm, s1m, s2m, rare1, rare2 = riemanntype(hL, hR, uL, uR, 1, drytol, g)
-    sE1 = min(sE1,s2m) #!Modified Einfeldt speed
-    sE2 = max(sE2,s1m) #!Modified Eindfeldt speed
-
-    hstarHLL = max((huL-huR+sE2*hR-sE1*hL)/(sE2-sE1),0) # middle state in an HLL solve
-    lambda2 = 0
-    rarecorrectortest = False
-    rarecorrector = False
-    if rarecorrectortest == True:
-       sdelta=sE2-sE1
-       raremin = 0.5
-       raremax = 0.9
-       if rare1 == True and sE1*s1m < 0:
-           raremin=0.2
-       if rare2 == True and sE2*s2m < 0:
-           raremin=0.2
-       if rare1 == True or rare2 == True:
-          #see which rarefaction is larger
-          rare1st = 3 * (np.sqrt(g*hL)-np.sqrt(g*hm))
-          rare2st= 3 * (np.sqrt(g*hR)-np.sqrt(g*hm))
-          if max(rare1st,rare2st) > raremin*sdelta and max(rare1st,rare2st) < raremax*sdelta:
-              rarecorrector = True
-              if rare1st > rare2st:
-                  lambda2 = s1m
-              elif rare2st > rare1st:
-                  lambda2 = s2m
-              else:
-                  lambda2=0.5*(s1m+s2m)
-    if hstarHLL < min(hL,hR)/5:
-        rarecorrector= False
-    lamb = np.asarray([sE1, lambda2, sE2])
-    r = np.zeros((3,mwaves))
-    for mw in range(mwaves):
-        r[0,mw]=1
-        r[1,mw]=lamb[mw]
-        r[2,mw]=(lamb[mw])**2
-
-    if rarecorrector == False:
-        lambda2 = 0.5*(lamb[0]+lamb[2])
-#         lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
-        r[0,1]=0
-        r[1,1]=0
-        r[2,1]=1
-#     !determine the steady state wave -------------------
-#      !criticaltol = 1.d-6
-#      ! MODIFIED:
-    criticaltol = max(drytol*g, 1e-6)
-    criticaltol_2 = np.sqrt(criticaltol)
-    deldelh = -delb
-    deldelphi = -0.5 * (hR + hL) * (g * delb)
-
-#     !determine a few quanitites needed for steady state wave if iterated
-    hLstar=hL
-    hRstar=hR
-    uLstar=uL
-    uRstar=uR
-    huLstar=uLstar*hLstar
-    huRstar=uRstar*hRstar
-
-    #!iterate to better determine the steady state wave
-    convergencetol=1e-6
-    for iter in range(maxiter):
-    #!determine steady state wave (this will be subtracted from the delta vectors)
-        if min(hLstar,hRstar) < drytol and rarecorrector==True:
-            rarecorrector= False
-            hLstar=hL
-            hRstar=hR
-            uLstar=uL
-            uRstar=uR
-            huLstar=uLstar*hLstar
-            huRstar=uRstar*hRstar
-            lambda2 = 0.5*(lamb[1]+lamb[3])
-#           lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
-            r[0,1]=0
-            r[1,1]=0
-            r[2,1]=1
-        hbar =  max(0.5*(hLstar+hRstar),0)
-        s1s2bar = 0.25*(uLstar+uRstar)**2 - g*hbar
-        s1s2tilde= max(0,uLstar*uRstar) - g*hbar
-
-        sonic = False
-        if abs(s1s2bar) <= criticaltol:
-            sonic = True
-            print("first cause")
-        elif s1s2bar*s1s2tilde <= criticaltol**2:
-            sonic = True
-            print("Second cause")
-        elif s1s2bar*sE1*sE2 <= criticaltol**2:
-            sonic = True
-            print("third cause")
-        elif min(abs(sE1),abs(sE2)) < criticaltol_2:
-            sonic = True
-            print("fourth cause")
-        elif sE1 <  criticaltol_2 and s1m > -criticaltol_2:
-            sonic = True
-            print("fifth cause")
-            print(sE1,s1m)
-        elif sE2 > -criticaltol_2 and s2m <  criticaltol_2:
-            sonic = True
-            print("sixth cause")
-        elif (uL+np.sqrt(g*hL))*(uR+np.sqrt(g*hR)) < 0:
-            sonic = True
-            print("seventh cause")
-        elif (uL- np.sqrt(g*hL))*(uR- np.sqrt(g*hR)) < 0:
-            sonic = True
-            print("eigth cause")
-
-#        !find jump in h, deldelh
-        if sonic==True:
-            deldelh =  -delb
-        else:
-            deldelh = delb*g*hbar/s1s2bar
-#        !find bounds in case of critical state resonance, or negative states
-        if sE1 < -criticaltol and sE2 > criticaltol:
-            deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE2)
-            deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE1)
-        elif sE1 >= criticaltol:
-            deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE1)
-            deldelh = max(deldelh,-hL)
-        elif sE2 < -criticaltol:
-            deldelh = min(deldelh,hR)
-            deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE2)
-
-#        ! adjust deldelh for well-balancing of atmospheric pressure difference
-    #    deldelh = deldelh - delP/(rho*g)
-
-#        !find jump in phi, deldelphi
-        if sonic == True:
-            deldelphi = -g*hbar*delb
-        else:
-            deldelphi = -delb*g*hbar*s1s2tilde/s1s2bar
-#        !find bounds in case of critical state resonance, or negative states
-        deldelphi=min(deldelphi,g*max(-hLstar*delb,-hRstar*delb))
-        deldelphi=max(deldelphi,g*min(-hLstar*delb,-hRstar*delb))
-        deldelphi = deldelphi # - hbar * delp / rho
 
         delt = np.zeros(3)
-        delt[0]=delh-deldelh
+        delt[0]=delh #-deldelh when there is variable bathy *and* sonic cases, and bound to get positivity
         delt[1]=delhu
-        delt[2]=delphi-deldelphi
-
+        delt[2]=delphidecomp #-deldelphi same here
+#
 #        !Determine determinant of eigenvector matrix========
         det1=r[0,0]*(r[1,1]*r[2,2]-r[1,2]*r[2,1])
         det2=r[0,1]*(r[1,0]*r[2,2]-r[1,2]*r[2,0])
@@ -352,7 +227,7 @@ def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, d
         determinant=det1-det2+det3
 
 
-#        !solve for beta(k) using Cramers Rule=================
+# #        !solve for beta(k) using Cramers Rule=================
         A = np.zeros((3,3))
         beta = np.zeros(3)
         for k in range(3):
@@ -369,57 +244,257 @@ def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, d
             det3=A[0,2]*(A[1,0]*A[2,1]-A[1,1]*A[2,0])
             beta[k]=(det1-det2+det3)/determinant
 
-        if abs(delt[0]**2+delt[2]**2-delnorm) < convergencetol:
-            break
-        delnorm = delt[0]**2+delt[2]**2
-        # !find new states qLstar and qRstar on either side of interface
-        hLstar=hL
-        hRstar=hR
-        uLstar=uL
-        uRstar=uR
-        huLstar=uLstar*hLstar
-        huRstar=uRstar*hRstar
-        for mw in range(mwaves):
-            if lamb[mw] < 0:
-                hLstar= hLstar + beta[mw]*r[0,mw]
-                huLstar= huLstar + beta[mw]*r[1,mw]
-        for mw in range(mwaves): # mw=mwaves,1,-1
-            if lamb[mwaves-mw-1] > 0:
-                hRstar= hRstar - beta[mw]*r[0,mw]
-                huRstar= huRstar - beta[mw]*r[1,mw]
+        # 1st nonlinear wave
+        fw[0,0] = beta[0]
+        fw[1,0] = beta[0] * lamb[0]
 
-        if hLstar > drytol:
-            uLstar=huLstar/hLstar
-        else:
-            hLstar=max(hLstar,0)
-            uLstar=0
-        if hRstar > drytol:
-            uRstar=huRstar/hRstar
-        else:
-            hRstar=max(hRstar,0)
-            uRstar=0
+        fw[0,1] = beta[1]
+        fw[1,1] = beta[1] * lamb[1]
 
-#      enddo ! end iteration on Riemann problem
-    sw = np.zeros(mwaves)
-    fw = np.zeros((3,mwaves))
-    for mw in range(mwaves):
-        sw[mw]=lamb[mw]
-        fw[0,mw]=beta[mw]*r[1,mw]
-        fw[1,mw]=beta[mw]*r[2,mw]
-        fw[2,mw]=beta[mw]*r[1,mw]
-#      !find transverse components (ie huv jumps).
-      # ! MODIFIED from 5.3.1 version
-      # fw(3,1)=fw(3,1)*vL
-      # fw(3,3)=fw(3,3)*vR
-      # fw(3,2)= 0.d0
+        fw[0,2] = beta[2]
+        fw[1,2] = beta[2] * lamb[2]
 
-    # hustar_interface = huL + fw[0,0]  #  = huR - fw(1,3)
-    # if hustar_interface <= 0.0:
-    #     fw[2,0] = fw[2,0] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
-    # else:
-    #     fw[2,2] = fw[2,2] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
-    print("transonic",sonic)
-    return fw, rarecorrector, sE1, sE2 # note that this is fw for [h,hu,b]
+        return fw, lamb
+
+    beta1 = (s2 * delhu - delphidecomp) / (s2 - s1)
+    beta2 = (delphidecomp - s1 * delhu) / (s2 - s1)
+
+    # 1st nonlinear wave
+    fw[0,0] = beta1
+    fw[1,0] = beta1 * s1
+
+    # 2nd nonlinear wave
+    fw[0,1] = beta2
+    fw[1,1] = beta2 * s2
+
+    return fw, lamb
+
+# def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
+#     mwaves = 3
+#     maxiter = 1
+#     delh = hR-hL
+#     delhu = huR-huL
+#     delphi = phiR-phiL
+#     delb = bR-bL
+#     #delP = pR - pL
+#     delnorm = delh**2 + delphi**2
+#
+#     hm,um, s1m, s2m, rare1, rare2 = riemanntype(hL, hR, uL, uR, 1, drytol, g)
+#     sE1 = min(sE1,s2m) #!Modified Einfeldt speed
+#     sE2 = max(sE2,s1m) #!Modified Eindfeldt speed
+#
+#     hstarHLL = max((huL-huR+sE2*hR-sE1*hL)/(sE2-sE1),0) # middle state in an HLL solve
+#     lambda2 = 0
+#     rarecorrectortest = False
+#     rarecorrector = False
+#     if rarecorrectortest == True:
+#        sdelta=sE2-sE1
+#        raremin = 0.5
+#        raremax = 0.9
+#        if rare1 == True and sE1*s1m < 0:
+#            raremin=0.2
+#        if rare2 == True and sE2*s2m < 0:
+#            raremin=0.2
+#        if rare1 == True or rare2 == True:
+#           #see which rarefaction is larger
+#           rare1st = 3 * (np.sqrt(g*hL)-np.sqrt(g*hm))
+#           rare2st= 3 * (np.sqrt(g*hR)-np.sqrt(g*hm))
+#           if max(rare1st,rare2st) > raremin*sdelta and max(rare1st,rare2st) < raremax*sdelta:
+#               rarecorrector = True
+#               if rare1st > rare2st:
+#                   lambda2 = s1m
+#               elif rare2st > rare1st:
+#                   lambda2 = s2m
+#               else:
+#                   lambda2=0.5*(s1m+s2m)
+#         if hstarHLL < min(hL,hR)/5:
+#             rarecorrector= False
+#         lamb = np.asarray([sE1, lambda2, sE2])
+#         r = np.zeros((3,mwaves))
+#         for mw in range(mwaves):
+#             r[0,mw]=1
+#             r[1,mw]=lamb[mw]
+#             r[2,mw]=(lamb[mw])**2
+#
+#     if rarecorrector == False:
+#         lambda2 = 0.5*(lamb[0]+lamb[2])
+# #         lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
+#         r[0,1]=0
+#         r[1,1]=0
+#         r[2,1]=1
+# #     !determine the steady state wave -------------------
+# #      !criticaltol = 1.d-6
+# #      ! MODIFIED:
+#     criticaltol = max(drytol*g, 1e-6)
+#     criticaltol_2 = np.sqrt(criticaltol)
+#     deldelh = -delb
+#     deldelphi = -0.5 * (hR + hL) * (g * delb)
+#
+# #     !determine a few quanitites needed for steady state wave if iterated
+#     hLstar=hL
+#     hRstar=hR
+#     uLstar=uL
+#     uRstar=uR
+#     huLstar=uLstar*hLstar
+#     huRstar=uRstar*hRstar
+#
+#     #!iterate to better determine the steady state wave
+#     convergencetol=1e-6
+#     for iter in range(maxiter):
+#     #!determine steady state wave (this will be subtracted from the delta vectors)
+#         if min(hLstar,hRstar) < drytol and rarecorrector==True:
+#             rarecorrector= False
+#             hLstar=hL
+#             hRstar=hR
+#             uLstar=uL
+#             uRstar=uR
+#             huLstar=uLstar*hLstar
+#             huRstar=uRstar*hRstar
+#             lambda2 = 0.5*(lamb[1]+lamb[3])
+# #           lambda(2) = max(min(0.5d0*(s1m+s2m),sE2),sE1)
+#             r[0,1]=0
+#             r[1,1]=0
+#             r[2,1]=1
+#         hbar =  max(0.5*(hLstar+hRstar),0)
+#         s1s2bar = 0.25*(uLstar+uRstar)**2 - g*hbar
+#         s1s2tilde= max(0,uLstar*uRstar) - g*hbar
+#
+#         sonic = False
+#         if abs(s1s2bar) <= criticaltol:
+#             sonic = True
+#             print("first cause")
+#         elif s1s2bar*s1s2tilde <= criticaltol**2:
+#             sonic = True
+#             print("Second cause")
+#         elif s1s2bar*sE1*sE2 <= criticaltol**2:
+#             sonic = True
+#             print("third cause")
+#         elif min(abs(sE1),abs(sE2)) < criticaltol_2:
+#             sonic = True
+#             print("fourth cause")
+#         elif sE1 <  criticaltol_2 and s1m > -criticaltol_2:
+#             sonic = True
+#             print("fifth cause")
+#             print(sE1,s1m)
+#         elif sE2 > -criticaltol_2 and s2m <  criticaltol_2:
+#             sonic = True
+#             print("sixth cause")
+#         elif (uL+np.sqrt(g*hL))*(uR+np.sqrt(g*hR)) < 0:
+#             sonic = True
+#             print("seventh cause")
+#         elif (uL- np.sqrt(g*hL))*(uR- np.sqrt(g*hR)) < 0:
+#             sonic = True
+#             print("eigth cause")
+#
+# #        !find jump in h, deldelh
+#         if sonic==True:
+#             deldelh =  -delb
+#         else:
+#             deldelh = delb*g*hbar/s1s2bar
+# #        !find bounds in case of critical state resonance, or negative states
+#         if sE1 < -criticaltol and sE2 > criticaltol:
+#             deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE2)
+#             deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE1)
+#         elif sE1 >= criticaltol:
+#             deldelh = min(deldelh,hstarHLL*(sE2-sE1)/sE1)
+#             deldelh = max(deldelh,-hL)
+#         elif sE2 < -criticaltol:
+#             deldelh = min(deldelh,hR)
+#             deldelh = max(deldelh,hstarHLL*(sE2-sE1)/sE2)
+#
+# #        ! adjust deldelh for well-balancing of atmospheric pressure difference
+#     #    deldelh = deldelh - delP/(rho*g)
+#
+# #        !find jump in phi, deldelphi
+#         if sonic == True:
+#             deldelphi = -g*hbar*delb
+#         else:
+#             deldelphi = -delb*g*hbar*s1s2tilde/s1s2bar
+# #        !find bounds in case of critical state resonance, or negative states
+#         deldelphi=min(deldelphi,g*max(-hLstar*delb,-hRstar*delb))
+#         deldelphi=max(deldelphi,g*min(-hLstar*delb,-hRstar*delb))
+#         deldelphi = deldelphi # - hbar * delp / rho
+#
+#         delt = np.zeros(3)
+#         delt[0]=delh-deldelh
+#         delt[1]=delhu
+#         delt[2]=delphi-deldelphi
+#
+# #        !Determine determinant of eigenvector matrix========
+#         det1=r[0,0]*(r[1,1]*r[2,2]-r[1,2]*r[2,1])
+#         det2=r[0,1]*(r[1,0]*r[2,2]-r[1,2]*r[2,0])
+#         det3=r[0,2]*(r[1,0]*r[2,1]-r[1,1]*r[2,0])
+#         determinant=det1-det2+det3
+#
+#
+# #        !solve for beta(k) using Cramers Rule=================
+#         A = np.zeros((3,3))
+#         beta = np.zeros(3)
+#         for k in range(3):
+#             for mw in range(3):
+#                 A[0,mw]=r[0,mw]
+#                 A[1,mw]=r[1,mw]
+#                 A[2,mw]=r[2,mw]
+#
+#             A[0,k]=delt[0]
+#             A[1,k]=delt[1]
+#             A[2,k]=delt[2]
+#             det1=A[0,0]*(A[1,1]*A[2,2]-A[1,2]*A[2,1])
+#             det2=A[0,1]*(A[1,0]*A[2,2]-A[1,2]*A[2,0])
+#             det3=A[0,2]*(A[1,0]*A[2,1]-A[1,1]*A[2,0])
+#             beta[k]=(det1-det2+det3)/determinant
+#
+#         if abs(delt[0]**2+delt[2]**2-delnorm) < convergencetol:
+#             break
+#         delnorm = delt[0]**2+delt[2]**2
+#         # !find new states qLstar and qRstar on either side of interface
+#         hLstar=hL
+#         hRstar=hR
+#         uLstar=uL
+#         uRstar=uR
+#         huLstar=uLstar*hLstar
+#         huRstar=uRstar*hRstar
+#         for mw in range(mwaves):
+#             if lamb[mw] < 0:
+#                 hLstar= hLstar + beta[mw]*r[0,mw]
+#                 huLstar= huLstar + beta[mw]*r[1,mw]
+#         for mw in range(mwaves): # mw=mwaves,1,-1
+#             if lamb[mwaves-mw-1] > 0:
+#                 hRstar= hRstar - beta[mw]*r[0,mw]
+#                 huRstar= huRstar - beta[mw]*r[1,mw]
+#
+#         if hLstar > drytol:
+#             uLstar=huLstar/hLstar
+#         else:
+#             hLstar=max(hLstar,0)
+#             uLstar=0
+#         if hRstar > drytol:
+#             uRstar=huRstar/hRstar
+#         else:
+#             hRstar=max(hRstar,0)
+#             uRstar=0
+#
+# #      enddo ! end iteration on Riemann problem
+#     sw = np.zeros(mwaves)
+#     fw = np.zeros((3,mwaves))
+#     for mw in range(mwaves):
+#         sw[mw]=lamb[mw]
+#         fw[0,mw]=beta[mw]*r[1,mw]
+#         fw[1,mw]=beta[mw]*r[2,mw]
+#         fw[2,mw]=beta[mw]*r[1,mw]
+# #      !find transverse components (ie huv jumps).
+#       # ! MODIFIED from 5.3.1 version
+#       # fw(3,1)=fw(3,1)*vL
+#       # fw(3,3)=fw(3,3)*vR
+#       # fw(3,2)= 0.d0
+#
+#     # hustar_interface = huL + fw[0,0]  #  = huR - fw(1,3)
+#     # if hustar_interface <= 0.0:
+#     #     fw[2,0] = fw[2,0] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
+#     # else:
+#     #     fw[2,2] = fw[2,2] + (hR*uR*vR - hL*uL*vL - fw[2,0]- fw[2,2])
+#     print("transonic",sonic)
+#     return fw, rarecorrector, sE1, sE2 # note that this is fw for [h,hu,b]
 
 
 def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
@@ -451,7 +526,9 @@ def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
 def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
 
     fwave = np.zeros((2, 2, 2))
+    fwave_fix = np.zeros((2,3,2))
     s = np.zeros((2, 2))
+    s_fix = np.zeros((3,2))
     amdq = np.zeros((2, 2))
     apdq = np.zeros((2, 2))
 
@@ -546,31 +623,55 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             sRoe2 = uhat + chat
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
+
+            third_wave = False # initially assume no need third wave correction for large rarefaction
+            first_large_rare = False
+            second_large_rare = False
             if hL <= drytol:
                 s1 = min(s1,um+np.sqrt(g*hm))
             if hR <= drytol:
-                s2 = min(s2,um-np.sqrt(g*hm))
+                s2 = max(s2,um-np.sqrt(g*hm))
+            if abs(s1m - sL) > 0.8*(s2-s1):
+                print("large rare")
+                third_wave = True
+                first_large_rare = True
+            if abs(sR - s2m) > 0.8*(s2-s1):
+                print('large rare')
+                third_wave = True
+                second_large_rare = True
 
-            fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+            fw, lamb = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, third_wave)
             #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
             # if rarecorrector == True:
             #     s1 = sE1
             #     s2 = sE2
-
+            if third_wave == True:
+                if first_large_rare == True:
+                    s_fix[0,i] = s1 * wall[0]
+                    s_fix[1,i] = s2 * wall[1]
+                    s_fix[2,i] = lamb[2] * wall[0]
+                    fwave_fix[:,2,i] = fw[:2,2] * wall[0]
+                if second_large_rare == True:
+                    s_fix[0,i] = s1 * wall[0]
+                    s_fix[1,i] = s2 * wall[1]
+                    s_fix[2,i] = lamb[2] * wall[1]
+                    fwave_fix[:,2,i] = fw[:2,2] * wall[1]
+                fwave_fix[:,0,i] = fw[:2,0] * wall[0]
+                fwave_fix[:,1,i] = fw[:2,1] * wall[1]
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
             fwave[:,0,i] = fw[:,0] * wall[0]
             fwave[:,1,i] = fw[:,1] * wall[1]
             # print("fw: ", fw)
-
-            for mw in range(num_waves):
-                if (s[mw,i] < 0):
-                    amdq[:,i] += fwave[:,mw,i]
-                elif (s[mw,i] > 0):
-                    apdq[:,i] += fwave[:,mw,i]
-                else:
-                    amdq[:,i] += 0.5 * fwave[:,mw,i]
-                    apdq[:,i] += 0.5 * fwave[:,mw,i]
+            if third_wave == False:
+                for mw in range(num_waves):
+                    if (s[mw,i] < 0):
+                        amdq[:,i] += fwave[:,mw,i]
+                    elif (s[mw,i] > 0):
+                        apdq[:,i] += fwave[:,mw,i]
+                    else:
+                        amdq[:,i] += 0.5 * fwave[:,mw,i]
+                        apdq[:,i] += 0.5 * fwave[:,mw,i]
             # if rarecorrector == True:
             #     if 0.5*(s1+s2) < 0:
             #         amdq[:,i] += fw[:2,2]
@@ -579,17 +680,31 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             #     else:
             #         amdq[:,i] += 0.5 * fw[:2,2]
             #         apdq[:,i] += 0.5 * fw[:2,2]
+            if third_wave == True:
+                for mw in range(3):
+                    if (s_fix[mw,i] < 0):
+                        amdq[:,i] += fwave_fix[:,mw,i]
+                    elif (s_fix[mw,i] > 0):
+                        apdq[:,i] += fwave_fix[:,mw,i]
+                    else:
+                        amdq[:,i] += 0.5*fwave_fix[:,mw,i]
+                        apdq[:,i] += 0.5*fwave_fix[:,mw,i]
 
+    s_wall[0] = min(np.min(s),np.min(s_fix))
+    s_wall[1] = max(np.max(s),np.max(s_fix))
 
-    s_wall[0] = np.min(s)
-    s_wall[1] = np.max(s)
-
-
-    if s_wall[1] - s_wall[0] != 0.0:
-        gamma[0,0] = (s_wall[1] * np.sum(fwave[0,:,:]) - np.sum(fwave[1,:,:])) / (s_wall[1] - s_wall[0])
-        gamma[0,1] = (np.sum(fwave[1,:,:]) - s_wall[0] * np.sum(fwave[0,:,:])) / (s_wall[1] - s_wall[0])
-        gamma[1,0] = gamma[0,0] * s_wall[0]
-        gamma[1,1] = gamma[0,1] * s_wall[1]
+    if third_wave == False:
+        if s_wall[1] - s_wall[0] != 0.0:
+            gamma[0,0] = (s_wall[1] * np.sum(fwave[0,:,:]) - np.sum(fwave[1,:,:])) / (s_wall[1] - s_wall[0])
+            gamma[0,1] = (np.sum(fwave[1,:,:]) - s_wall[0] * np.sum(fwave[0,:,:])) / (s_wall[1] - s_wall[0])
+            gamma[1,0] = gamma[0,0] * s_wall[0]
+            gamma[1,1] = gamma[0,1] * s_wall[1]
+    else:
+        if s_wall[1] - s_wall[0] != 0.0:
+            gamma[0,0] = (s_wall[1] * np.sum(fwave_fix[0,:,:]) - np.sum(fwave_fix[1,:,:])) / (s_wall[1] - s_wall[0])
+            gamma[0,1] = (np.sum(fwave_fix[1,:,:]) - s_wall[0] * np.sum(fwave_fix[0,:,:])) / (s_wall[1] - s_wall[0])
+            gamma[1,0] = gamma[0,0] * s_wall[0]
+            gamma[1,1] = gamma[0,1] * s_wall[1]
 
     wave_wall = gamma
     # print("gamma[0,:]: ", gamma[0,:])
@@ -602,120 +717,120 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
 
 
 
-def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
-    # print("shallow_fwave_hbox_dry_1d")
-    g = problem_data['grav']
-    drytol = problem_data['dry_tolerance']
-    maxiter = problem_data['max_iteration']
-
-    num_rp = q_l.shape[1]
-    num_eqn = 2
-    num_waves = 2
-#    num_ghost = 2
-
-    # Output arrays
-    fwave = np.zeros((num_eqn, num_waves, num_rp))
-    s = np.zeros((num_waves, num_rp))
-    amdq = np.zeros((num_eqn, num_rp))
-    apdq = np.zeros((num_eqn, num_rp))
-
-    for i in range(num_rp):
-        hL = q_l[0,i]
-        hR = q_r[0,i]
-        huL = q_l[1,i]
-        huR = q_r[1,i]
-        bL = aux_l[0,i]
-        bR = aux_r[0,i]
-
-        # Check wet/dry states
-        if (hR > drytol): # right state is not dry
-            uR = huR / hR
-            phiR = 0.5 * g * hR**2 + huR**2 / hR
-        else:
-            hR = 0.0
-            huR = 0.0
-            uR = 0.0
-            phiR = 0.0
-
-        if (hL > drytol):
-            uL = huL / hL
-            phiL = 0.5 * g * hL**2 + huL**2 / hL
-        else:
-            hL = 0.0
-            huL = 0.0
-            uL = 0.0
-            phiL = 0.0
-
-
-        if (hL > drytol or hR > drytol):
-            wall = np.ones(2)
-            if (hR <= drytol):
-                hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
-                hstartest = max(hL, hstar)
-                if (hstartest + bL <= bR):
-                    wall[1] = 0.0
-                    hR = hL
-                    huR = -huL
-                    bR = bL
-                    phiR = phiL
-                    uR = -uL
-                elif (hL + bL <= bR):
-                    bR = hL + bL
-
-            if (hL <= drytol):
-                hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
-                hstartest = max(hR, hstar)
-                if (hstartest + bR <= bL):
-                    wall[0] = 0.0
-                    hL = hR
-                    huL = -huR
-                    bL = bR
-                    phiL = phiR
-                    uL = -uR
-                elif (hR+ bR <= bL):
-                    bL = hR + bR
-
-            sL = uL - np.sqrt(g * hL)
-            sR = uR + np.sqrt(g * hR)
-            uhat = (np.sqrt(g * hL) * uL + np.sqrt(g * hR) * uR) / (np.sqrt(g * hR) + np.sqrt(g * hL))
-            chat = np.sqrt(g * 0.5 * (hR + hL))
-            sRoe1 = uhat - chat
-            sRoe2 = uhat + chat
-            s1 = min(sL, sRoe1)
-            s2 = max(sR, sRoe2)
-
-            #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
-            #if rarecorrector == True:
-            #    s1 = sE1
-            #    s2 = sE2
-            s[0,i] = s1 * wall[0]
-            s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:2,0] * wall[0]
-            fwave[:,1,i] = fw[:2,1] * wall[1]
-
-
-            for mw in range(num_waves):
-                if (s[mw,i] < 0):
-                    amdq[:,i] += fwave[:,mw,i]
-                elif (s[mw,i] > 0):
-                    apdq[:,i] += fwave[:,mw,i]
-                else:
-                    amdq[:,i] += 0.5 * fwave[:,mw,i]
-                    apdq[:,i] += 0.5 * fwave[:,mw,i]
-            # if rarecorrector == True:
-            #     if 0.5*(s1+s2) < 0:
-            #         amdq[:,i] += fw[:2,2]
-            #     elif 0.5*(s1+s2) > 0:
-            #         apdq[:,i] += fw[:2,2]
-            #     else:
-            #         amdq[:,i] += 0.5 * fw[:2,2]
-            #         apdq[:,i] += 0.5 * fw[:2,2]
-    if True == True:
-        wall_height = problem_data['wall_height']
-        iw = 2
-        fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,[2]].copy(), q_r[:,[2]].copy(), aux_l[0,2].copy(), aux_r[0,2].copy(), wall_height, drytol, g, maxiter)
-    #print("hbox",q_l)
-    return fwave, s, amdq, apdq
+# def shallow_fwave_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
+#     # print("shallow_fwave_hbox_dry_1d")
+#     g = problem_data['grav']
+#     drytol = problem_data['dry_tolerance']
+#     maxiter = problem_data['max_iteration']
+#
+#     num_rp = q_l.shape[1]
+#     num_eqn = 2
+#     num_waves = 2
+# #    num_ghost = 2
+#
+#     # Output arrays
+#     fwave = np.zeros((num_eqn, num_waves, num_rp))
+#     s = np.zeros((num_waves, num_rp))
+#     amdq = np.zeros((num_eqn, num_rp))
+#     apdq = np.zeros((num_eqn, num_rp))
+#
+#     for i in range(num_rp):
+#         hL = q_l[0,i]
+#         hR = q_r[0,i]
+#         huL = q_l[1,i]
+#         huR = q_r[1,i]
+#         bL = aux_l[0,i]
+#         bR = aux_r[0,i]
+#
+#         # Check wet/dry states
+#         if (hR > drytol): # right state is not dry
+#             uR = huR / hR
+#             phiR = 0.5 * g * hR**2 + huR**2 / hR
+#         else:
+#             hR = 0.0
+#             huR = 0.0
+#             uR = 0.0
+#             phiR = 0.0
+#
+#         if (hL > drytol):
+#             uL = huL / hL
+#             phiL = 0.5 * g * hL**2 + huL**2 / hL
+#         else:
+#             hL = 0.0
+#             huL = 0.0
+#             uL = 0.0
+#             phiL = 0.0
+#
+#
+#         if (hL > drytol or hR > drytol):
+#             wall = np.ones(2)
+#             if (hR <= drytol):
+#                 hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+#                 hstartest = max(hL, hstar)
+#                 if (hstartest + bL <= bR):
+#                     wall[1] = 0.0
+#                     hR = hL
+#                     huR = -huL
+#                     bR = bL
+#                     phiR = phiL
+#                     uR = -uL
+#                 elif (hL + bL <= bR):
+#                     bR = hL + bL
+#
+#             if (hL <= drytol):
+#                 hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+#                 hstartest = max(hR, hstar)
+#                 if (hstartest + bR <= bL):
+#                     wall[0] = 0.0
+#                     hL = hR
+#                     huL = -huR
+#                     bL = bR
+#                     phiL = phiR
+#                     uL = -uR
+#                 elif (hR+ bR <= bL):
+#                     bL = hR + bR
+#
+#             sL = uL - np.sqrt(g * hL)
+#             sR = uR + np.sqrt(g * hR)
+#             uhat = (np.sqrt(g * hL) * uL + np.sqrt(g * hR) * uR) / (np.sqrt(g * hR) + np.sqrt(g * hL))
+#             chat = np.sqrt(g * 0.5 * (hR + hL))
+#             sRoe1 = uhat - chat
+#             sRoe2 = uhat + chat
+#             s1 = min(sL, sRoe1)
+#             s2 = max(sR, sRoe2)
+#
+#             #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+#             #if rarecorrector == True:
+#             #    s1 = sE1
+#             #    s2 = sE2
+#             s[0,i] = s1 * wall[0]
+#             s[1,i] = s2 * wall[1]
+#             fwave[:,0,i] = fw[:2,0] * wall[0]
+#             fwave[:,1,i] = fw[:2,1] * wall[1]
+#
+#
+#             for mw in range(num_waves):
+#                 if (s[mw,i] < 0):
+#                     amdq[:,i] += fwave[:,mw,i]
+#                 elif (s[mw,i] > 0):
+#                     apdq[:,i] += fwave[:,mw,i]
+#                 else:
+#                     amdq[:,i] += 0.5 * fwave[:,mw,i]
+#                     apdq[:,i] += 0.5 * fwave[:,mw,i]
+#             # if rarecorrector == True:
+#             #     if 0.5*(s1+s2) < 0:
+#             #         amdq[:,i] += fw[:2,2]
+#             #     elif 0.5*(s1+s2) > 0:
+#             #         apdq[:,i] += fw[:2,2]
+#             #     else:
+#             #         amdq[:,i] += 0.5 * fw[:2,2]
+#             #         apdq[:,i] += 0.5 * fw[:2,2]
+#     if True == True:
+#         wall_height = problem_data['wall_height']
+#         iw = 2
+#         fwave[:,:,iw], s[:,iw], amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_l[:,[2]].copy(), q_r[:,[2]].copy(), aux_l[0,2].copy(), aux_r[0,2].copy(), wall_height, drytol, g, maxiter)
+#     #print("hbox",q_l)
+#     return fwave, s, amdq, apdq
 
 
 def f(Q, problem_data):
@@ -803,6 +918,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                 huL = 0.0
                 uL = 0.0
                 phiL = 0.0
+
             hm,um,s1m,s2m,rare1,rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
 
             if (hL > drytol or hR > drytol):
@@ -843,7 +959,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                 if hL <= drytol:
                     s1 = min(s1,um+np.sqrt(g*hm))
                 if hR <= drytol:
-                    s2 = min(s2,um-np.sqrt(g*hm))
+                    s2 = max(s2,um-np.sqrt(g*hm))
 
                 fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
                 #fw, rarecorrector, sE1, sE2 = riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
