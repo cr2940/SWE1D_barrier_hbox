@@ -660,8 +660,8 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                 fwave_fix[:,1,i] = fw[:2,1] * wall[1]
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:,0] * wall[0]
-            fwave[:,1,i] = fw[:,1] * wall[1]
+            fwave[:,0,i] = fw[:2,0] * wall[0]
+            fwave[:,1,i] = fw[:2,1] * wall[1]
             # print("fw: ", fw)
             if third_wave == False:
                 for mw in range(num_waves):
@@ -868,7 +868,9 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
 
         # Output arrays
         fwave = np.zeros((num_eqn, num_waves, num_rp))
+        fwave_fix = np.zeros((num_eqn, num_waves+1, num_rp))
         s = np.zeros((num_waves, num_rp))
+        s_fix = np.zeros((num_waves+1,num_rp))
         amdq = np.zeros((num_eqn, num_rp))
         apdq = np.zeros((num_eqn, num_rp))
 
@@ -960,34 +962,73 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                     s1 = min(s1,um+np.sqrt(g*hm))
                 if hR <= drytol:
                     s2 = max(s2,um-np.sqrt(g*hm))
+###
+                if abs(s1m - sL) > 0.8*(s2-s1):
+                    print("large rare")
+                    third_wave = True
+                    first_large_rare = True
+                if abs(sR - s2m) > 0.8*(s2-s1):
+                    print('large rare')
+                    third_wave = True
+                    second_large_rare = True
 
-                fw = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+                fw, lamb = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, third_wave)
+            #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
+            # if rarecorrector == True:
+            #     s1 = sE1
+            #     s2 = sE2
+                if third_wave == True:
+                    if first_large_rare == True:
+                        s_fix[0,i] = s1 * wall[0]
+                        s_fix[1,i] = s2 * wall[1]
+                        s_fix[2,i] = lamb[2] * wall[0]
+                        fwave_fix[:,2,i] = fw[:2,2] * wall[0]
+                    if second_large_rare == True:
+                        s_fix[0,i] = s1 * wall[0]
+                        s_fix[1,i] = s2 * wall[1]
+                        s_fix[2,i] = lamb[2] * wall[1]
+                        fwave_fix[:,2,i] = fw[:2,2] * wall[1]
+                    fwave_fix[:,0,i] = fw[:2,0] * wall[0]
+                    fwave_fix[:,1,i] = fw[:2,1] * wall[1]
+                s[0,i] = s1 * wall[0]
+                s[1,i] = s2 * wall[1]
+                fwave[:,0,i] = fw[:2,0] * wall[0]
+                fwave[:,1,i] = fw[:2,1] * wall[1]
+            # print("fw: ", fw)
+                if third_wave == False:
+                    for mw in range(num_waves):
+                        if (s[mw,i] < 0):
+                            amdq[:,i] += fwave[:,mw,i]
+                        elif (s[mw,i] > 0):
+                            apdq[:,i] += fwave[:,mw,i]
+                        else:
+                            amdq[:,i] += 0.5 * fwave[:,mw,i]
+                            apdq[:,i] += 0.5 * fwave[:,mw,i]
+            # if rarecorrector == True:
+            #     if 0.5*(s1+s2) < 0:
+            #         amdq[:,i] += fw[:2,2]
+            #     elif 0.5*(s1+s2) > 0:
+            #         apdq[:,i] += fw[:2,2]
+            #     else:
+            #         amdq[:,i] += 0.5 * fw[:2,2]
+            #         apdq[:,i] += 0.5 * fw[:2,2]
+                if third_wave == True:
+                    for mw in range(3):
+                        if (s_fix[mw,i] < 0):
+                            amdq[:,i] += fwave_fix[:,mw,i]
+                        elif (s_fix[mw,i] > 0):
+                            apdq[:,i] += fwave_fix[:,mw,i]
+                        else:
+                            amdq[:,i] += 0.5*fwave_fix[:,mw,i]
+                            apdq[:,i] += 0.5*fwave_fix[:,mw,i]
+
+
+
+
                 #fw, rarecorrector, sE1, sE2 = riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
                 #if rarecorrector == True:
                 #    s1 = sE1
                 #    s2 = sE2
-                s[0,i] = s1 * wall[0]
-                s[1,i] = s2 * wall[1]
-                fwave[:,0,i] = fw[:,0] * wall[0]
-                fwave[:,1,i] = fw[:,1] * wall[1]
-
-
-                for mw in range(num_waves):
-                    if (s[mw,i] < 0):
-                        amdq[:,i] += fwave[:,mw,i]
-                    elif (s[mw,i] > 0):
-                        apdq[:,i] += fwave[:,mw,i]
-                    else:
-                        amdq[:,i] += 0.5 * fwave[:,mw,i]
-                        apdq[:,i] += 0.5 * fwave[:,mw,i]
-            #    if rarecorrector == True:
-            #        if 0.5*(s1+s2) < 0:
-            #            amdq[:,i] += fw[:2,2]
-            #        elif 0.5*(s1+s2) > 0:
-            #            apdq[:,i] += fw[:2,2]
-            #        else:
-            #            amdq[:,i] += 0.5 * fw[:2,2]
-            #            apdq[:,i] += 0.5 * fw[:2,2]
 
 #################
 
