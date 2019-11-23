@@ -174,7 +174,8 @@ def shallow_fwave_1d(q_l, q_r, aux_l, aux_r, problem_data):
 def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, third_wave):
     num_eqn = 2
     num_waves = 2
-
+    maxiter=1
+    drytol = 0.001
     lamb = np.zeros(3) # for third wave case, speeds
 
     if third_wave == True:
@@ -650,18 +651,18 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                     s_fix[0,i] = s1 * wall[0]
                     s_fix[1,i] = s2 * wall[1]
                     s_fix[2,i] = lamb[2] * wall[0]
-                    fwave_fix[:,2,i] = fw[:2,2] * wall[0]
+                    fwave_fix[:,2,i] = fw[1:],2] * wall[0]
                 if second_large_rare == True:
                     s_fix[0,i] = s1 * wall[0]
                     s_fix[1,i] = s2 * wall[1]
                     s_fix[2,i] = lamb[2] * wall[1]
-                    fwave_fix[:,2,i] = fw[:2,2] * wall[1]
-                fwave_fix[:,0,i] = fw[:2,0] * wall[0]
-                fwave_fix[:,1,i] = fw[:2,1] * wall[1]
+                    fwave_fix[:,2,i] = fw[1:,2] * wall[1]
+                fwave_fix[:,0,i] = fw[1:,0] * wall[0]
+                fwave_fix[:,1,i] = fw[1:,1] * wall[1]
             s[0,i] = s1 * wall[0]
             s[1,i] = s2 * wall[1]
-            fwave[:,0,i] = fw[:2,0] * wall[0]
-            fwave[:,1,i] = fw[:2,1] * wall[1]
+            fwave[:,0,i] = fw[1:,0] * wall[0]
+            fwave[:,1,i] = fw[1:,1] * wall[1]
             # print("fw: ", fw)
             if third_wave == False:
                 for mw in range(num_waves):
@@ -683,28 +684,21 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             if third_wave == True:
                 for mw in range(3):
                     if (s_fix[mw,i] < 0):
-                        amdq[:,i] += fwave_fix[:,mw,i]
+                        amdq[:,i] += fwave_fix[1:,mw,i]
                     elif (s_fix[mw,i] > 0):
-                        apdq[:,i] += fwave_fix[:,mw,i]
+                        apdq[:,i] += fwave_fix[1:,mw,i]
                     else:
-                        amdq[:,i] += 0.5*fwave_fix[:,mw,i]
-                        apdq[:,i] += 0.5*fwave_fix[:,mw,i]
+                        amdq[:,i] += 0.5*fwave_fix[1:,mw,i]
+                        apdq[:,i] += 0.5*fwave_fix[1:,mw,i]
 
     s_wall[0] = min(np.min(s),np.min(s_fix))
     s_wall[1] = max(np.max(s),np.max(s_fix))
 
-    if third_wave == False:
-        if s_wall[1] - s_wall[0] != 0.0:
-            gamma[0,0] = (s_wall[1] * np.sum(fwave[0,:,:]) - np.sum(fwave[1,:,:])) / (s_wall[1] - s_wall[0])
-            gamma[0,1] = (np.sum(fwave[1,:,:]) - s_wall[0] * np.sum(fwave[0,:,:])) / (s_wall[1] - s_wall[0])
-            gamma[1,0] = gamma[0,0] * s_wall[0]
-            gamma[1,1] = gamma[0,1] * s_wall[1]
-    else:
-        if s_wall[1] - s_wall[0] != 0.0:
-            gamma[0,0] = (s_wall[1] * np.sum(fwave_fix[0,:,:]) - np.sum(fwave_fix[1,:,:])) / (s_wall[1] - s_wall[0])
-            gamma[0,1] = (np.sum(fwave_fix[1,:,:]) - s_wall[0] * np.sum(fwave_fix[0,:,:])) / (s_wall[1] - s_wall[0])
-            gamma[1,0] = gamma[0,0] * s_wall[0]
-            gamma[1,1] = gamma[0,1] * s_wall[1]
+    if s_wall[1] - s_wall[0] != 0.0:
+        gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])+np.sum(fwave_fix[1,:,:])) - (np.sum(fwave[1,:,:])+np.sum(fwave_fix[2,:,:]))) / (s_wall[1] - s_wall[0])
+        gamma[0,1] = (np.sum(fwave[1,:,:])+np.sum(fwave_fix[2,:,:]) - s_wall[0] * (np.sum(fwave[0,:,:])+np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
+        gamma[1,0] = gamma[0,0] * s_wall[0]
+        gamma[1,1] = gamma[0,1] * s_wall[1]
 
     wave_wall = gamma
     # print("gamma[0,:]: ", gamma[0,:])
@@ -958,6 +952,9 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                 sRoe2 = uhat + chat
                 s1 = min(sL, sRoe1)
                 s2 = max(sR, sRoe2)
+                third_wave=False # initially assume dont need third wave correction
+                first_large_rare=False
+                second_large_rare=False
                 if hL <= drytol:
                     s1 = min(s1,um+np.sqrt(g*hm))
                 if hR <= drytol:
@@ -982,18 +979,18 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                         s_fix[0,i] = s1 * wall[0]
                         s_fix[1,i] = s2 * wall[1]
                         s_fix[2,i] = lamb[2] * wall[0]
-                        fwave_fix[:,2,i] = fw[:2,2] * wall[0]
+                        fwave_fix[:,2,i] = fw[1:,2] * wall[0]
                     if second_large_rare == True:
                         s_fix[0,i] = s1 * wall[0]
                         s_fix[1,i] = s2 * wall[1]
                         s_fix[2,i] = lamb[2] * wall[1]
-                        fwave_fix[:,2,i] = fw[:2,2] * wall[1]
-                    fwave_fix[:,0,i] = fw[:2,0] * wall[0]
-                    fwave_fix[:,1,i] = fw[:2,1] * wall[1]
+                        fwave_fix[:,2,i] = fw[1:,2] * wall[1]
+                    fwave_fix[:,0,i] = fw[1:,0] * wall[0]
+                    fwave_fix[:,1,i] = fw[1:,1] * wall[1]
                 s[0,i] = s1 * wall[0]
                 s[1,i] = s2 * wall[1]
-                fwave[:,0,i] = fw[:2,0] * wall[0]
-                fwave[:,1,i] = fw[:2,1] * wall[1]
+                fwave[:,0,i] = fw[1:,0] * wall[0]
+                fwave[:,1,i] = fw[1:,1] * wall[1]
             # print("fw: ", fw)
                 if third_wave == False:
                     for mw in range(num_waves):
