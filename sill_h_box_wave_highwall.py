@@ -105,7 +105,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     state.problem_data['wall_height'] = wall_height
     state.problem_data['fraction'] = alpha
     state.problem_data['dry_tolerance'] = 0.001
-    state.problem_data['max_iteration'] = 1
+    state.problem_data['max_iteration'] = 2
     #state.problem_data['method'] = 'h_box_wave' # shifting the grid makes this unnecessary!
     state.problem_data['zero_width'] = True
     #state.problem_data['arrival_state'] = False # shifting the grid makes this unnecessary!
@@ -122,7 +122,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     solver.cfl_desired = 0.7
     solver.kernel_language = "Python"
     solver.fwave = True
-    solver.num_waves = 2
+    solver.num_waves = 3
     solver.num_eqn = 2
     solver.before_step = before_step
     solver.bc_lower[0] = pyclaw.BC.wall
@@ -153,11 +153,11 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     # so will need two hbox pairs: one at left endpoint and one at right endpoint
     state.aux[1, nw-1] = alpha * xpxc
     state.aux[1, nw] = (1 - alpha) * xpxc
-    state.q[0, :] = -0.3 - state.aux[0, :]
+    state.q[0, :] = -0.4 - state.aux[0, :]
     #state.q[0, nw:nw+2] = 0
-    state.q[0,nw:] = 0
+    state.q[0,nw:] = 0#0.4
 
-    state.q[0,:20] += 0.5
+    state.q[0,:20] += 1.3
     state.q[0,:] = state.q[0,:].clip(min=0)
     state.q[1,:] = 0
     print(state.q[0,:])
