@@ -157,7 +157,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     #state.q[0, nw:nw+2] = 0
     state.q[0,nw:] = 0#0.4
 
-    state.q[0,:20] += 1.3
+    state.q[0,:40] += 1.3
     state.q[0,:] = state.q[0,:].clip(min=0)
     state.q[1,:] = 0
     print(state.q[0,:])
@@ -165,7 +165,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 
     claw = pyclaw.Controller()
     claw.keep_copy = True
-    claw.tfinal = 0.25
+    claw.tfinal = 0.5
     claw.solution = pyclaw.Solution(state, domain)
     claw.solver = solver
     # claw.setplot = setplot
@@ -183,7 +183,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 
 
     claw.output_style = 1
-    claw.num_output_times = 10
+    claw.num_output_times = 20
     claw.nstepout = 1
 
     # if outdir is not None:
@@ -202,7 +202,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 # get the solution q and capacity array and give out the mass
     print("change in water vol",((numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))  - (numpy.sum(claw.frames[-1].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0)))/numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))
     plot_kargs = {'problem_data':state.problem_data}
-    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots',iplot=False, htmlplot=True, **plot_kargs)
+    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots_flat',iplot=False, htmlplot=True, **plot_kargs)
 
 #setplot="./setplot_h_box_wave.py"
 

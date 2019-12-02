@@ -177,8 +177,8 @@ def shallow_fwave_1d(q_l, q_r, aux_l, aux_r, problem_data):
 def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     num_eqn = 4
     num_waves = 3
-    maxiter=2
-    drytol = 0.001
+    maxiter=1
+    drytol = 0.00001
     lamb = np.zeros(3) # for third wave case, speeds
     r = np.zeros((3,3))
     sw = np.zeros(3)
@@ -459,7 +459,7 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     # fw[0,1] = beta2
     # fw[1,1] = beta2 * s2
     # # print(fw)
-    return fw, sw, to1, to2
+    return fw, sw, to1, to2, beta
 
 # def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
 #     mwaves = 3
@@ -720,9 +720,15 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     fwave = np.zeros((2, 3, 2))
     # fwave_fix = np.zeros((2,3,2))
     s = np.zeros((3, 2))
+    betas = np.zeros((3,2))
     # s_fix = np.zeros((3,2))
     amdq = np.zeros((2, 2))
     apdq = np.zeros((2, 2))
+    lambs = np.zeros(3)
+    third_wave = np.zeros(3)
+    Del = np.zeros(3)
+    R = np.zeros((3,3))
+
 
     q_wall = np.zeros((2,3))
     aux_wall = np.zeros((1,3))
@@ -757,6 +763,8 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
         huR = q_wall_r[1,i]
         bL = aux_wall_l[0,i]
         bR = aux_wall_r[0,i]
+        delb = bR-bL
+
 
         # Check wet/dry states
         if (hR > drytol): # right state is not dry
@@ -776,6 +784,10 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             huL = 0.0
             uL = 0.0
             phiL = 0.0
+
+        Del[0] += hR-hL
+        Del[1] += huR-huL
+        Del[2] += phiR - phiL + g * 0.5 * (hL + hR) * delb
 
         if (hL > drytol or hR > drytol):
             wall = np.ones(2)
@@ -814,11 +826,30 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             s1 = min(sL, sRoe1)
             s2 = max(sR, sRoe2)
 
-            fw, lamb, to1, to2 = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+            fw, lamb, to1, to2, beta = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+            betas[:,i] = beta
+            if i == 0:
+                lambs[i] = lamb[0]
+                print("uhhuh")
+            else:
+                lambs[1] = lamb[1]
+                lambs[2] = lamb[2]
+            print(i)
+            # if i == 1:
+                # print("yes?")
+            if to1 == True or to2 == True:
+                third_wave[0] = 1
+                third_wave[1] = lamb[1]
+                third_wave[2] = lamb[1]**2
+            else:
+                third_wave[0] = 0
+                third_wave[1] = 0
+                third_wave[2] = 1
             #fw, rarecorrector, sE1, sE2= riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g, drytol)
             # if rarecorrector == True:
             #     s1 = sE1
             #     s2 = sE2
+
             if to1 == True:
                 wall1 = wall[0]
             elif to2 == True:
@@ -827,11 +858,11 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
                 wall1 = 0.5
             else:
                 wall1 = 0
-            s[0,i] = lamb[0] #* wall[0]
-            s[1,i] = lamb[1]
-            s[2,i] = lamb[2] #* wall[1]
+            s[0,i] = lamb[0] * wall[0]
+            s[1,i] = lamb[1] * wall1
+            s[2,i] = lamb[2] * wall[1]
             fwave[:,0,i] = fw[:2,0] * wall[0]
-            fwave[:,1,i] = fw[:2,1]
+            fwave[:,1,i] = fw[:2,1] * wall1
             fwave[:,2,i] = fw[:2,2] * wall[1]
             # print("fw: ", fw)
             for mw in range(3):
@@ -850,14 +881,31 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             #     else:
             #         amdq[:,i] += 0.5 * fw[:2,2]
             #         apdq[:,i] += 0.5 * fw[:2,2]
-
-    s_wall[0] = np.min(s[0,:])
-    s_wall[1] = max(s[1,:], key=abs)  #0.5*(np.min(s)+np.max(s))
-    s_wall[2] = np.max(s[2,:])
-
-    gamma[:,0] = fwave[:,0,0] + fwave[:,0,1]
-    gamma[:,1] = fwave[:,1,0] + fwave[:,1,1]
-    gamma[:,2] = fwave[:,2,0] + fwave[:,2,1]
+    print(s)
+    lambs[0] = np.min(s)
+    lambs[2] = np.max(s[2,:])
+    # lambs[0] = 0.5*(s[0,0] + s[0,1])
+    # lambs[1] = 0.5*(s[1,0] + s[1,1])
+    # lambs[2] = 0.5*(s[2,0] + s[2,1])
+    R[0,0] = 1
+    R[1,0] = lambs[0]
+    R[2,0] = lambs[0]**2
+    print(third_wave)
+    R[:,1] = third_wave
+    R[0,2] = 1
+    R[1,2] = lambs[2]
+    R[2,2] = lambs[2]**2
+    print(R)
+    # beta_tilde = np.linalg.solve(R,Del)
+    s_wall = lambs #np.min(s[0,:])
+    # s_wall[1] = max(s[1,:], key=abs)  #0.5*(np.min(s)+np.max(s))
+    # s_wall[2] = np.max(s[2,:])
+    beta_tilde = np.zeros(2)
+    beta_tilde[0] = ((s[2,1]-s[2,0])*betas[2,0] + (s[2,1]-s[0,1])*betas[0,1])/(s[2,1]-s[0,0])
+    beta_tilde[1] = ((s[2,0]-s[0,0])*betas[2,0] + (s[0,1]-s[0,0])*betas[0,1])/(s[2,1]-s[0,0])
+    gamma[:,0] = 0.5*(fwave[:,0,0] + fwave[:,0,1])
+    gamma[:,1] =0.5*(fwave[:,1,0] + fwave[:,1,1])
+    gamma[:,2] = 0.5*(fwave[:,2,0] + fwave[:,2,1])
 
     # if s_wall[1] - s_wall[0] != 0.0:
     #     gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])) - (np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
@@ -1136,7 +1184,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                     # third_wave = True
                     # second_large_rare = True
 
-                fw, lamb, to1, to2 = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+                fw, lamb, to1, to2, beta = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
                 if to1 == True:
                     wall1 = wall[0]
                 elif to2 == True:
