@@ -242,7 +242,7 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     delh = hR - hL
     delhu = huR - huL
     delb = bR - bL
-    delphi = phiR - phiL + g * 0.5 * (hL + hR) * delb
+    delphi = phiR - phiL #+ g * 0.5 * (hL + hR) * delb
     delnorm = delh**2 + delphi**2
 
     hm, um, s1m, s2m, rare1, rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
@@ -511,7 +511,7 @@ def riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     # fw[0,1] = beta2
     # fw[1,1] = beta2 * s2
     # # print(fw)
-    return fw, sw, to1, to2, beta
+    return fw, sw, to1, to2, beta, Del
 
 # def riemann_aug_JCP(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, sE1, sE2, g, drytol):
 #     mwaves = 3
@@ -766,8 +766,168 @@ def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
 
     return L2R, R2L, hstarL, hstarR
 
+def riemann_fwave_1dd(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
+    num_eqn = 2
+    num_waves = 2
+    drytol = 0.001
+    fw = np.zeros((num_eqn, num_waves))
+
+    delh = hR - hL
+    delhu = huR - huL
+    delb = bR - bL
+    delphidecomp = phiR - phiL + g * 0.5 * (hL + hR) * delb
+
+    beta1 = (s2 * delhu - delphidecomp) / (s2 - s1)
+    beta2 = (delphidecomp - s1 * delhu) / (s2 - s1)
+
+    # 1st nonlinear wave
+    fw[0,0] = beta1
+    fw[1,0] = beta1 * s1
+
+    # 2nd nonlinear wave
+    fw[0,1] = beta2
+    fw[1,1] = beta2 * s2
+
+    return fw
 
 def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
+
+    fwave = np.zeros((2, 2, 2))
+    s = np.zeros((2, 2))
+    amdq = np.zeros((2, 2))
+    apdq = np.zeros((2, 2))
+
+    q_wall = np.zeros((2,3))
+    aux_wall = np.zeros((1,3))
+    s_wall = np.zeros(2)
+    gamma = np.zeros((2,2))
+    amdq_wall = np.zeros(2)
+    apdq_wall = np.zeros(2)
+
+    # hbox method
+    q_wall[:,0] = q_l[:].copy()
+    q_wall[:,2] = q_r[:].copy()
+
+    aux_wall[0,0] = aux_l.copy()
+    aux_wall[0,2] = aux_r.copy()
+    aux_wall[0,1] = 0.5*(aux_wall[0,0] + aux_wall[0,2]) + wall_height
+
+    L2R, R2L, hstarL, hstarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
+    if (L2R==True and R2L==True):
+        q_wall[0,1] = 0.5*(hstarL+hstarR)
+        q_wall[1,1] = q_wall[0,1]  * (q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
+
+    q_wall_l = q_wall[:,:-1]
+    q_wall_r = q_wall[:,1:]
+    aux_wall_l = aux_wall[:,:-1]
+    aux_wall_r = aux_wall[:,1:]
+
+    for i in range(2):
+        hL = q_wall_l[0,i]
+        hR = q_wall_r[0,i]
+        huL = q_wall_l[1,i]
+        huR = q_wall_r[1,i]
+        bL = aux_wall_l[0,i]
+        bR = aux_wall_r[0,i]
+
+        # Check wet/dry states
+        if (hR > drytol): # right state is not dry
+            uR = huR / hR
+            phiR = 0.5 * g * hR**2 + huR**2 / hR
+        else:
+            hR = 0.0
+            huR = 0.0
+            uR = 0.0
+            phiR = 0.0
+
+        if (hL > drytol):
+            uL = huL / hL
+            phiL = 0.5 * g * hL**2 + huL**2 / hL
+        else:
+            hL = 0.0
+            huL = 0.0
+            uL = 0.0
+            phiL = 0.0
+
+        if (hL > drytol or hR > drytol):
+            wall = np.ones(2)
+            if (hR <= drytol):
+                hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+                hstartest = max(hL, hstar)
+                if (hstartest + bL <= bR):
+                    wall[1] = 0.0
+                    hR = hL
+                    huR = -huL
+                    bR = bL
+                    phiR = phiL
+                    uR = -uL
+                elif (hL + bL <= bR):
+                    bR = hL + bL
+
+            if (hL <= drytol):
+                hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+                hstartest = max(hR, hstar)
+                if (hstartest + bR <= bL):
+                    wall[0] = 0.0
+                    hL = hR
+                    huL = -huR
+                    bL = bR
+                    phiL = phiR
+                    uL = -uR
+                elif (hR + bR <= bL):
+                    bL = hR + bR
+
+            sL = uL - np.sqrt(g * hL)
+            sR = uR + np.sqrt(g * hR)
+            uhat = (np.sqrt(g * hL) * uL + np.sqrt(g * hR) * uR) / (np.sqrt(g * hR) + np.sqrt(g * hL))
+            chat = np.sqrt(g * 0.5 * (hR + hL))
+            sRoe1 = uhat - chat
+            sRoe2 = uhat + chat
+            s1 = min(sL, sRoe1)
+            s2 = max(sR, sRoe2)
+            hm, um, s1m, s2m, rare1, rare2 = riemanntype(hL, hR, uL, uR, maxiter, drytol, g)
+            s1 = min(s1, s2m)
+            s2 = max(s2, s1m)
+            fw = riemann_fwave_1dd(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+            s[0,i] = s1 * wall[0]
+            s[1,i] = s2 * wall[1]
+            fwave[:,0,i] = fw[:,0] * wall[0]
+            fwave[:,1,i] = fw[:,1] * wall[1]
+            # print("fw: ", fw)
+
+            for mw in range(num_waves):
+                if (s[mw,i] < 0):
+                    amdq[:,i] += fwave[:,mw,i]
+                elif (s[mw,i] > 0):
+                    apdq[:,i] += fwave[:,mw,i]
+                else:
+                    amdq[:,i] += 0.5*fwave[:,mw,i]
+                    apdq[:,i] += 0.5*fwave[:,mw,i]
+
+
+    s_wall[0] = np.min(s)
+    s_wall[1] = np.max(s)
+
+
+    if s_wall[1] - s_wall[0] != 0.0:
+        gamma[0,0] = (s_wall[1] * np.sum(fwave[0,:,:]) - np.sum(fwave[1,:,:])) / (s_wall[1] - s_wall[0])
+        gamma[0,1] = (np.sum(fwave[1,:,:]) - s_wall[0] * np.sum(fwave[0,:,:])) / (s_wall[1] - s_wall[0])
+        gamma[1,0] = gamma[0,0] * s_wall[0]
+        gamma[1,1] = gamma[0,1] * s_wall[1]
+
+    wave_wall = gamma
+    # print("gamma[0,:]: ", gamma[0,:])
+    for mw in range(2):
+        if (s_wall[mw] < 0):
+            amdq_wall[:] += gamma[:,mw]
+        elif (s_wall[mw] > 0):
+            apdq_wall[:] += gamma[:,mw]
+        else:
+            amdq_wall[:] += 0.5*gamma[:,mw]
+            apdq_wall[:] += 0.5*gamma[:,mw]
+
+    return wave_wall, s_wall, amdq_wall, apdq_wall
+def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
 
     fwave = np.zeros((2, 3, 2))
     # fwave_fix = np.zeros((2,3,2))
@@ -777,7 +937,7 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     amdq = np.zeros((2, 2))
     apdq = np.zeros((2, 2))
     third_wave = np.zeros((3,2))
-    Del = np.zeros(3)
+    DEL = np.zeros(3)
 
     # different cases (whether large rarefaction in either or both or neither RP's)
     cases = np.zeros(2)
@@ -786,9 +946,10 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     q_wall = np.zeros((2,3))
     aux_wall = np.zeros((1,3))
     s_wall = np.zeros(2)
-    gamma = np.zeros((2,2))
+    gamma = np.zeros((2,3))
     amdq_wall = np.zeros(2)
     apdq_wall = np.zeros(2)
+    lambs = np.zeros(3)
 
     # hbox method
     q_wall[:,0] = q_l[:].copy()
@@ -891,8 +1052,9 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             s2 = max(sR, sRoe2)
 
             # fw, lamb = hllc_swe_1d(hL, hR, huL, huR, uL, uR,phiL, phiR, bL, bR, g)
-            fw, lamb, to1, to2, beta = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+            fw, lamb, to1, to2, beta, Del = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
             betas[:,i] = beta
+            DEL += Del
             # if i == 0:
             #     lambs[0] = lamb[0]
             # else:
@@ -934,9 +1096,9 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             s[0,i] = lamb[0] * wall[0]
             s[1,i] = lamb[1] * wall1
             s[2,i] = lamb[2] * wall[1]
-            fwave[:,0,i] = fw[1:,0] * wall[0]
-            fwave[:,1,i] = fw[1:,1] * wall1
-            fwave[:,2,i] = fw[1:,2] * wall[1]
+            fwave[:,0,i] = fw[:2,0] * wall[0]
+            fwave[:,1,i] = fw[:2,1] * wall1
+            fwave[:,2,i] = fw[:2,2] * wall[1]
             # print("fw: ", fw)
             for mw in range(3):
                 if (s[mw,i] < 0):
@@ -955,111 +1117,135 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             #         amdq[:,i] += 0.5 * fw[:2,2]
             #         apdq[:,i] += 0.5 * fw[:2,2]
     # print(s)
-    if cases[0] == 1 and cases[1] == 0:
-        R = np.zeros((3,3))
-        lambs = np.asarray([s[0,0], s[1,0], s[2,1]])
-        for mw in range(3):
-            R[0,mw] = 1
-            R[1,mw] = lambs[mw]
-            R[2,mw] = lambs[mw]**2
-        Del[0] = betas[2,0] + betas[0,1]
-        Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
-        Del[2] = betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2+betas[1,1]
-
-        gamma = np.linalg.solve(R,Del)
-        beta_tilde = np.asarray([betas[0,0], betas[1,0], betas[2,1]]) + gamma
-
-        wave_wall = np.zeros((3,3))
-        for mw in range(3):
-            wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
-        s_wall = lambs
-
-
-    elif cases[0] == 0 and cases[1] == 0:
-        R = np.zeros((3,2))
-        lambs = np.asarray([s[0,0], s[2,1]])
-        for mw in range(2):
-            R[0,mw] = 1
-            R[1,mw] = lambs[mw]
-            R[2,mw] = lambs[mw]**2
-        Del[0] = betas[2,0] + betas[0,1]
-        Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
-        Del[2] = betas[1,0] + betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2+betas[1,1]
-
-        gamma = np.linalg.lstsq(R,Del)
-        beta_tilde = np.asarray([betas[0,0], betas[2,1]]) + gamma[0]
-
-        wave_wall = np.zeros((3,2))
-        for mw in range(2):
-            wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
-        s_wall = lambs
-
-    elif cases[0] == 0 and cases[1] == 1:
-        R = np.zeros((3,3))
-        lambs = np.asarray([s[0,0], s[1,1], s[2,1]])
-        for mw in range(3):
-            R[0,mw] = 1
-            R[1,mw] = lambs[mw]
-            R[2,mw] = lambs[mw]**2
-        Del[0] = betas[2,0] + betas[0,1]
-        Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
-        Del[2] = betas[1,0] + betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2
-
-        gamma = np.linalg.solve(R,Del)
-        beta_tilde = np.asarray([betas[0,0], betas[1,1], betas[2,1]]) + gamma
-
-        wave_wall = np.zeros((3,3))
-        for mw in range(3):
-            wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
-        s_wall = lambs
-
-
-    elif cases[0] == 1 and cases[1] == 1:
-        if abs(s[1,0]) > abs(s[1,1]): # both large rarefactions but left is larger
-            R = np.zeros((3,3))
-            lambs = np.asarray([s[0,0], s[1,0], s[2,1]])
-            for mw in range(3):
-                R[0,mw] = 1
-                R[1,mw] = lambs[mw]
-                R[2,mw] = lambs[mw]**2
-            Del[0] = betas[2,0] + betas[0,1] + betas[1,1]
-            Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1] + betas[1,1]*s[1,1]
-            Del[2] = betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2 + betas[1,1]*s[1,1]**2
-
-            gamma = np.linalg.solve(R,Del)
-            beta_tilde = np.asarray([betas[0,0], betas[1,0], betas[2,1]]) + gamma
-
-            wave_wall = np.zeros((3,3))
-            for mw in range(3):
-                wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
-            s_wall = lambs
-
-
-        else:
-            R = np.zeros((3,3))
-            lambs = np.asarray([s[0,0],s[1,1],s[2,1]])
-            for mw in range(3):
-                R[0,mw] = 1
-                R[1,mw] = lambs[mw]
-                R[2,mw] = lambs[mw]**2
-            Del[0] = betas[1,0] + betas[2,0] + betas[0,1]
-            Del[1] = betas[1,0]*s[1,0] + betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
-            Del[2] = betas[1,0]*s[1,0]**2 +betas[2,0]*s[2,0]**2 +betas[0,1]*s[0,1]**2
-
-            gamma = np.linalg.solve(R,Del)
-            beta_tilde = np.asarray([betas[0,0], betas[1,1], betas[2,1]]) + gamma
-
-            wave_wall = np.zeros((3,3))
-            for mw in range(3):
-                wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
-            s_wall = lambs
+    # if cases[0] == 1 and cases[1] == 0:
+    #     R = np.zeros((3,3))
+    #     lambs = np.asarray([s[0,0], s[1,0], s[2,0]])
+    #     for mw in range(3):
+    #         R[0,mw] = 1
+    #         R[1,mw] = lambs[mw]
+    #         R[2,mw] = lambs[mw]**2
+    #     # Del[0] = betas[2,0] + betas[0,1]
+    #     # Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
+    #     # Del[2] = betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2+betas[1,1]
+    #
+    #     beta_tilde = np.linalg.solve(R,DEL)
+    #     # beta_tilde = np.asarray([betas[0,0], betas[1,0], betas[2,0]]) + gamma
+    #
+    #     wave_wall = np.zeros((3,3))
+    #     for mw in range(3):
+    #         wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
+    #     s_wall = lambs
+    #
+    #
+    # elif cases[0] == 0 and cases[1] == 0:
+    #     if hR < drytol:
+    #         lambs = np.asarray([s[0,0],0.5*(s[0,0]+s[2,0]),s[2,0]])
+    #         BETA = np.asarray([betas[0,0],betas[1,0], betas[2,0]])
+    #         # print("hR < dryol")
+    #         # print(lambs, i)
+    #     elif hL < drytol:
+    #         lambs = np.asarray([s[0,1],0.5*(s[0,1]+s[2,1]),s[2,1]])
+    #         BETA = np.asarray([betas[0,1],betas[1,1],betas[2,1]])
+    #         # print("hL < drytol")
+    #     else:
+    #         lambs = np.asarray([s[0,0], 0.5*(s[0,0]+s[2,1]), s[2,1]])
+    #         BETA = np.asarray([betas[0,0],0.5*(betas[1,0]+betas[2,1]),betas[2,1]])
+    #         # print("water")
+    #
+    #     R = np.zeros((3,3))
+    #     wave_wall = np.zeros((3,3))
+    #     s_wall = lambs
+    #     # if s_wall[1] - s_wall[0] != 0.0:
+    #     #     wave_wall[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])) - (np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
+    #     #     wave_wall[0,1] = (np.sum(fwave[1,:,:]) - s_wall[0] * (np.sum(fwave[0,:,:]))) / (s_wall[1] - s_wall[0])
+    #     #     wave_wall[1,0] = wave_wall[0,0] * s_wall[0]
+    #     #     wave_wall[1,1] = wave_wall[0,1] * s_wall[1]
+    #     # if s_wall[0]==0 and s_wall[1]==0 and s_wall[2]==0:
+    #     #     wave_wall = np.zeros((3,3))
+    #     # else:
+    #     for mw in range(3):
+    #         R[0,mw] = 1
+    #         R[1,mw] = lambs[mw]
+    #         R[2,mw] = lambs[mw]**2
+    #     R[0,1] = 0
+    #     R[1,1] = 0
+    #     R[2,1] = 1
+    #     # Del[0] = betas[2,0] + betas[0,1]
+    #     # Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
+    #     # Del[2] = betas[1,0] + betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2+betas[1,1]
+    #     beta_tilde = np.linalg.solve(R,DEL)
+    #     # beta_tilde = BETA + gamma[0]
+    #
+    #     for mw in range(3):
+    #         wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
+    #     # s_wall = lambs
+    #
+    # elif cases[0] == 0 and cases[1] == 1:
+    #     R = np.zeros((3,3))
+    #     lambs = np.asarray([s[0,1], s[1,1], s[2,1]])
+    #     for mw in range(3):
+    #         R[0,mw] = 1
+    #         R[1,mw] = lambs[mw]
+    #         R[2,mw] = lambs[mw]**2
+    #     # Del[0] = betas[2,0] + betas[0,1]
+    #     # Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
+    #     # Del[2] = betas[1,0] + betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2
+    #
+    #     beta_tilde = np.linalg.solve(R,DEL)
+    #     # beta_tilde = np.asarray([betas[0,1], betas[1,1], betas[2,1]]) + gamma
+    #
+    #     wave_wall = np.zeros((3,3))
+    #     for mw in range(3):
+    #         wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
+    #     s_wall = lambs
+    #
+    #
+    # elif cases[0] == 1 and cases[1] == 1:
+    #     if abs(s[1,0]) > abs(s[1,1]): # both large rarefactions but left is larger
+    #         R = np.zeros((3,3))
+    #         lambs = np.asarray([s[0,0], s[1,0], s[2,0]])
+    #         for mw in range(3):
+    #             R[0,mw] = 1
+    #             R[1,mw] = lambs[mw]
+    #             R[2,mw] = lambs[mw]**2
+    #         # Del[0] = betas[2,0] + betas[0,1] + betas[1,1]
+    #         # Del[1] = betas[2,0]*s[2,0] + betas[0,1]*s[0,1] + betas[1,1]*s[1,1]
+    #         # Del[2] = betas[2,0]*s[2,0]**2 + betas[0,1]*s[0,1]**2 + betas[1,1]*s[1,1]**2
+    #
+    #         beta_tilde = np.linalg.solve(R,DEL)
+    #         # beta_tilde = np.asarray([betas[0,0], betas[1,0], betas[2,0]]) + gamma
+    #
+    #         wave_wall = np.zeros((3,3))
+    #         for mw in range(3):
+    #             wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
+    #         s_wall = lambs
+    #
+    #
+    #     else:
+    #         R = np.zeros((3,3))
+    #         lambs = np.asarray([s[0,1],s[1,1],s[2,1]])
+    #         for mw in range(3):
+    #             R[0,mw] = 1
+    #             R[1,mw] = lambs[mw]
+    #             R[2,mw] = lambs[mw]**2
+    #         # Del[0] = betas[1,0] + betas[2,0] + betas[0,1]
+    #         # Del[1] = betas[1,0]*s[1,0] + betas[2,0]*s[2,0] + betas[0,1]*s[0,1]
+    #         # Del[2] = betas[1,0]*s[1,0]**2 +betas[2,0]*s[2,0]**2 +betas[0,1]*s[0,1]**2
+    #
+    #         beta_tilde = np.linalg.solve(R,DEL)
+    #         # beta_tilde = np.asarray([betas[0,1], betas[1,1], betas[2,1]]) + gamma
+    #
+    #         wave_wall = np.zeros((3,3))
+    #         for mw in range(3):
+    #             wave_wall[:,mw] = beta_tilde[mw] * R[:,mw]
+    #         s_wall = lambs
 
 
     # s_wall[0] = np.min(s) #s[0,0] #
     # s_wall[1] = np.max(s) #s[2,1] ##[2,:])
-    # lambs[0] = 0.5*(s[0,0] + s[0,1])
-    # lambs[1] = 0.5*(s[1,0] + s[1,1])
-    # lambs[2] = 0.5*(s[2,0] + s[2,1])
+    lambs[0] = 0.5*(s[0,0] + s[0,1])
+    lambs[1] = 0.5*(s[1,0] + s[1,1])
+    lambs[2] = 0.5*(s[2,0] + s[2,1])
     # R[0,0] = 1
     # R[1,0] = lambs[0]
     # R[2,0] = lambs[0]**2
@@ -1074,15 +1260,17 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     # beta_tilde = np.linalg.lstsq(R,Del) #np.linalg.solve(R,Del)
     # beta_new = beta_tilde[0]
     # print(beta_new)
-    # s_wall = lambs #np.asarray([s[0,0],0,s[2,1]]) #lambs #np.min(s[0,:])
+    s_wall = lambs #np.asarray([s[0,0],0,s[2,1]]) #lambs #np.min(s[0,:])
     # s_wall[1] = max(s[1,:], key=abs)  #0.5*(np.min(s)+np.max(s))
     # s_wall[2] = np.max(s[2,:])
     # beta_tilde = np.zeros(2)
     # beta_tilde[0] = Del[0] - (s[0,0]*Del[0]-Del[1])/(s[0,0]-s[2,1]) #((s[2,1]-s[2,0])*betas[2,0] + (s[2,1]-s[0,1])*betas[0,1])/(s[2,1]-s[0,0])
     # beta_tilde[1] = -beta_tilde[0] + Del[0] #((s[2,0]-s[0,0])*betas[2,0] + (s[0,1]-s[0,0])*betas[0,1])/(s[2,1]-s[0,0])
-    # gamma[:,0] = fwave[:,0,0] + fwave[:,0,1] #beta_new[0] * R[1:,0] #np.asarray([s[0,0], s[0,0]**2]) #
-    # gamma[:,1] = fwave[:,1,0] + fwave[:,1,1] #beta_new[1] * R[1:,1] #0.5*()
-    # gamma[:,2] = fwave[:,2,0] + fwave[:,2,1] #beta_new[2] * R[1:,2] #np.asarray([s[2,1], s[2,1]**2]) #0.5*()
+    # s_wall = np.asarray([np.min(s),0.5*(s[1,0]+s[1,1]),np.max(s)])
+
+    gamma[:,0] = fwave[:,0,0] + fwave[:,0,1] #beta_new[0] * R[1:,0] #np.asarray([s[0,0], s[0,0]**2]) #
+    gamma[:,1] = fwave[:,1,0] + fwave[:,1,1] #beta_new[1] * R[1:,1] #0.5*()
+    gamma[:,2] = fwave[:,2,0] + fwave[:,2,1] #beta_new[2] * R[1:,2] #np.asarray([s[2,1], s[2,1]**2]) #0.5*()
     # gamma[:,3] = beta_new[3] * R[1:,3]
     # if s_wall[1] - s_wall[0] != 0.0:
     #     gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])) - (np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
@@ -1090,21 +1278,33 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     #     gamma[1,0] = gamma[0,0] * s_wall[0]
     #     gamma[1,1] = gamma[0,1] * s_wall[1]
     #
-    # wave_wall = gamma
+    wave_wall = gamma
     # print("gamma[0,:]: ", gamma[0,:])
-    # for mw in range(3):
-    #     for mk in range(2): #[0,2]:
+    for mw in range(3):
+        for mk in range(2): #[0,2]:
         # if mw == 1 or mw == 2:
-    for mw in range(len(s_wall)):
-        # if mw == 1:
-        #     pass
-        if s_wall[mw] <0:
-            amdq_wall[:] += wave_wall[1:,mw]
-        elif s_wall[mw] > 0:
-            apdq_wall[:] += wave_wall[1:,mw]
-        else:
-            amdq_wall[:] += 0.5 * wave_wall[1:,mw]
-            apdq_wall[:] += 0.5 * wave_wall[1:,mw]
+    # if len(s_wall) == 2:
+    #     for mw in range(2):
+            # if mw == 1:
+            #     pass
+            if s[mw,mk] <0:
+                amdq_wall[:] += fwave[:,mw,mk]
+            elif s[mw,mk] > 0:
+                apdq_wall[:] += fwave[:,mw,mk]
+            else:
+                amdq_wall[:] += 0.5 * fwave[:,mw,mk]
+                apdq_wall[:] += 0.5 * fwave[:,mw,mk]
+    # else:
+    # for mw in range(len(s_wall)):
+    #     # if mw == 1:
+    #     #     pass
+    #     if s_wall[mw] <0:
+    #         amdq_wall += wave_wall[:2,mw]
+    #     elif s_wall[mw] > 0:
+    #         apdq_wall += wave_wall[:2,mw]
+    #     else:
+    #         amdq_wall += 0.5 * wave_wall[:2,mw]
+    #         apdq_wall += 0.5 * wave_wall[:2,mw]
         # if mw == 3:
         #     mw -= 1
             # if (s[mw,mk] < 0):
@@ -1114,6 +1314,8 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             # else:
             #     amdq_wall[:] += 0.5 * gamma[:,mw]
             #     apdq_wall[:] += 0.5 * gamma[:,mw]
+
+
     return wave_wall, s_wall, amdq_wall, apdq_wall
 
 
@@ -1375,7 +1577,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                     # third_wave = True
                     # second_large_rare = True
 
-                fw, lamb, to1, to2, beta = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+                fw, lamb, to1, to2, beta, Del = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
                 if to1 == True:
                     wall1 = wall[0]
                 elif to2 == True:
@@ -1448,7 +1650,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
         dxdt = dx/dt
 
 ##################
-        fwave_redist, s_redist, amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
+        fwave_redist, s_redist, amdq[:,iw], apdq[:,iw] = redistribute_fwavef(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
         # fwave[:,:,iw] = gamma[:,[0,1,3]]
         # s[:,iw] = s_fwave[[0,1,3]]
     #    amdq[:,iw] = (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_l[:,iw],problem_data)
