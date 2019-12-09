@@ -964,6 +964,9 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     if (L2R==True and R2L==True):
         q_wall[0,1] = 0.5*(hstarL+hstarR)
         q_wall[1,1] = q_wall[0,1]  * (q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
+    if wall_height == 0.0:
+        q_wall[0,1] = q_wall[0,0]
+        q_wall[1,1] = q_wall[1,0]
 
     q_wall_l = q_wall[:,:-1]
     q_wall_r = q_wall[:,1:]
