@@ -928,14 +928,14 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
             amdq_wall[:] += gamma[:,mw]
         elif (s_wall[mw] > 0):
             apdq_wall[:] += gamma[:,mw]
-        else:
-            amdq_wall[:] += 0.5*gamma[:,mw]
-            apdq_wall[:] += 0.5*gamma[:,mw]
+        # else:
+        #     amdq_wall[:] += 0.5*gamma[:,mw]
+        #     apdq_wall[:] += 0.5*gamma[:,mw]
 
     return wave_wall, s_wall, amdq_wall, apdq_wall
 def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
 
-    fwave = np.zeros((2, 3, 2))
+    fwave = np.zeros((3, 3, 2))
     # fwave_fix = np.zeros((2,3,2))
     s = np.zeros((3, 2))
     betas = np.zeros((3,2))
@@ -952,7 +952,7 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     q_wall = np.zeros((2,3))
     aux_wall = np.zeros((1,3))
     s_wall = np.zeros(2)
-    gamma = np.zeros((2,3))
+    gamma = np.zeros((3,3))
     amdq_wall = np.zeros(2)
     apdq_wall = np.zeros(2)
     lambs = np.zeros(3)
@@ -1105,18 +1105,18 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
             s[0,i] = lamb[0] * wall[0]
             s[1,i] = lamb[1] * wall1
             s[2,i] = lamb[2] * wall[1]
-            fwave[:,0,i] = fw[:2,0] * wall[0]
-            fwave[:,1,i] = fw[:2,1] * wall1
-            fwave[:,2,i] = fw[:2,2] * wall[1]
+            fwave[:,0,i] = fw[:,0] * wall[0]
+            fwave[:,1,i] = fw[:,1] * wall1
+            fwave[:,2,i] = fw[:,2] * wall[1]
             # print("fw: ", fw)
             for mw in range(3):
                 if (s[mw,i] < 0):
-                    amdq[:,i] += fwave[:,mw,i]
+                    amdq[:,i] += fwave[:2,mw,i]
                 elif (s[mw,i] > 0):
-                    apdq[:,i] += fwave[:,mw,i]
+                    apdq[:,i] += fwave[:2,mw,i]
                 else:
-                    amdq[:,i] += 0.5 * fwave[:,mw,i]
-                    apdq[:,i] += 0.5 * fwave[:,mw,i]
+                    amdq[:,i] += 0.5 * fwave[:2,mw,i]
+                    apdq[:,i] += 0.5 * fwave[:2,mw,i]
             # if rarecorrector == True:
             #     if 0.5*(s1+s2) < 0:
             #         amdq[:,i] += fw[:2,2]
@@ -1253,7 +1253,7 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     # s_wall[0] = np.min(s) #s[0,0] #
     # s_wall[1] = np.max(s) #s[2,1] ##[2,:])
     lambs[0] = np.min(s) #0.5*(s[0,0] + s[0,1])
-    lambs[1] = 0.5*(s[1,0] + s[1,1])
+    lambs[1] = 0.5*(np.max(s)+np.min(s))
     lambs[2] = np.max(s) #0.5*(s[2,0] + s[2,1])
 
 
@@ -1278,10 +1278,19 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     # beta_tilde[0] = Del[0] - (s[0,0]*Del[0]-Del[1])/(s[0,0]-s[2,1]) #((s[2,1]-s[2,0])*betas[2,0] + (s[2,1]-s[0,1])*betas[0,1])/(s[2,1]-s[0,0])
     # beta_tilde[1] = -beta_tilde[0] + Del[0] #((s[2,0]-s[0,0])*betas[2,0] + (s[0,1]-s[0,0])*betas[0,1])/(s[2,1]-s[0,0])
     # s_wall = np.asarray([np.min(s),0.5*(s[1,0]+s[1,1]),np.max(s)])
-
-    gamma[:,0] = fwave[:,0,0] + fwave[:,0,1] #beta_new[0] * R[1:,0] #np.asarray([s[0,0], s[0,0]**2]) #
-    gamma[:,1] = fwave[:,1,0] + fwave[:,1,1] #beta_new[1] * R[1:,1] #0.5*()
-    gamma[:,2] = fwave[:,2,0] + fwave[:,2,1] #beta_new[2] * R[1:,2] #np.asarray([s[2,1], s[2,1]**2]) #0.5*()
+    if s_wall[2] - s_wall[0] != 0.0:
+        gamma[0,0] = (s_wall[2] *s_wall[1]* np.sum(fwave[0,:,:]) - (s_wall[1]+s_wall[2])*np.sum(fwave[1,:,:]) + np.sum(fwave[2,:,:])) / ((s_wall[2] - s_wall[0])*(s_wall[1]-s_wall[0]))
+        gamma[0,2] = (-(s_wall[1]+s_wall[0])*np.sum(fwave[1,:,:]) + s_wall[1]*s_wall[0]*np.sum(fwave[0,:,:]) + np.sum(fwave[2,:,:])) / ((s_wall[2] - s_wall[0])*(s_wall[2]-s_wall[1]))
+        gamma[0,1] = (s_wall[0]*s_wall[2]*np.sum(fwave[0,:,:]) - (s_wall[0]+s_wall[2])*np.sum(fwave[1,:,:]) + np.sum(fwave[2,:,:])) / ((s_wall[1]-s_wall[2])*(s_wall[1]-s_wall[0]))
+        gamma[1,0] = gamma[0,0] * s_wall[0]
+        gamma[2,0] = gamma[1,0] * s_wall[0]
+        gamma[1,2] = gamma[0,2] * s_wall[2]
+        gamma[2,2] = gamma[1,2] * s_wall[2]
+        gamma[1,1] = gamma[0,1] * s_wall[1]
+        gamma[2,1] = gamma[1,1] * s_wall[1]
+    # gamma[:,0] = fwave[:,0,0] + fwave[:,0,1] #beta_new[0] * R[1:,0] #np.asarray([s[0,0], s[0,0]**2]) #
+    # gamma[:,1] = fwave[:,1,0] + fwave[:,1,1] #beta_new[1] * R[1:,1] #0.5*()
+    # gamma[:,2] = fwave[:,2,0] + fwave[:,2,1] #beta_new[2] * R[1:,2] #np.asarray([s[2,1], s[2,1]**2]) #0.5*()
     # gamma[:,3] = beta_new[3] * R[1:,3]
     # if s_wall[1] - s_wall[0] != 0.0:
     #     gamma[0,0] = (s_wall[1] * (np.sum(fwave[0,:,:])) - (np.sum(fwave[1,:,:]))) / (s_wall[1] - s_wall[0])
@@ -1291,31 +1300,31 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     #
     wave_wall = gamma
     # print("gamma[0,:]: ", gamma[0,:])
-    for mw in range(3):
-        for mk in range(2): #[0,2]:
-        # if mw == 1 or mw == 2:
-    # if len(s_wall) == 2:
-    #     for mw in range(2):
-            # if mw == 1:
-            #     pass
-            if s[mw,mk] <0:
-                amdq_wall[:] += fwave[:,mw,mk]
-            elif s[mw,mk] > 0:
-                apdq_wall[:] += fwave[:,mw,mk]
-            else:
-                amdq_wall[:] += 0.5 * fwave[:,mw,mk]
-                apdq_wall[:] += 0.5 * fwave[:,mw,mk]
+    # for mw in range(3):
+    #     for mk in range(2): #[0,2]:
+    #     # if mw == 1 or mw == 2:
+    # # if len(s_wall) == 2:
+    # #     for mw in range(2):
+    #         # if mw == 1:
+    #         #     pass
+    #         if s[mw,mk] <0:
+    #             amdq_wall[:] += fwave[:,mw,mk]
+    #         elif s[mw,mk] > 0:
+    #             apdq_wall[:] += fwave[:,mw,mk]
+    #         else:
+    #             amdq_wall[:] += 0.5 * fwave[:,mw,mk]
+    #             apdq_wall[:] += 0.5 * fwave[:,mw,mk]
     # else:
-    # for mw in range(len(s_wall)):
-    #     # if mw == 1:
-    #     #     pass
-    #     if s_wall[mw] <0:
-    #         amdq_wall += wave_wall[:,mw]
-    #     elif s_wall[mw] > 0:
-    #         apdq_wall += wave_wall[:,mw]
-    #     else:
-    #         amdq_wall += 0.5 * wave_wall[:,mw]
-    #         apdq_wall += 0.5 * wave_wall[:,mw]
+    for mw in range(len(s_wall)):
+        # if mw == 1:
+        #     pass
+        if s_wall[mw] <0:
+            amdq_wall += wave_wall[:2,mw]
+        elif s_wall[mw] > 0:
+            apdq_wall += wave_wall[:2,mw]
+        # else:
+        #     amdq_wall += 0.5 * wave_wall[:2,mw]
+        #     apdq_wall += 0.5 * wave_wall[:2,mw]
         # if mw == 3:
         #     mw -= 1
             # if (s[mw,mk] < 0):
@@ -1661,7 +1670,7 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
         dxdt = dx/dt
 
 ##################
-        fwave_re, s_re, amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
+        fwave_re, s_re, amdq[:,iw], apdq[:,iw] = redistribute_fwavef(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
         # fwave[:,:,iw] = gamma[:,[0,1,3]]
         # s[:,iw] = s_fwave[[0,1,3]]
     #    amdq[:,iw] = (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_l[:,iw],problem_data)
