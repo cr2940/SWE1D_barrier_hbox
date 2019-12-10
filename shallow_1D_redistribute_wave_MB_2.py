@@ -747,30 +747,24 @@ def barrier_passing(hL, hR, huL, huR, bL, bR, wall_height, drytol, g, maxiter):
     R2L = False
     hstarL = 0.0
     hstarR = 0.0
-    ustarL = 0.0
-    ustarR = 0.0
 
     if (hL > drytol):
         uL = huL / hL
-        hstar,ustar,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+        hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
         hstartest = max(hL, hstar)
-        ustartest = max(uL, ustar)
         if (hstartest + bL > 0.5*(bL+bR)+wall_height):
             L2R = True
             hstarL = hstartest + bL - 0.5*(bL+bR) - wall_height
-        ustarL = ustartest
 
     if (hR > drytol):
         uR = huR / hR
-        hstar,ustar,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+        hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
         hstartest = max(hR, hstar)
-        ustartest = max(uR, ustar)
         if (hstartest + bR > 0.5*(bL+bR)+wall_height):
             R2L = True
             hstarR = hstartest + bR - 0.5*(bL+bR) - wall_height
-        ustarR = ustartest
 
-    return L2R, R2L, hstarL, hstarR, ustarL, ustarR
+    return L2R, R2L, hstarL, hstarR
 
 def riemann_fwave_1dd(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g):
     num_eqn = 2
@@ -818,10 +812,10 @@ def redistribute_fwave(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter):
     aux_wall[0,2] = aux_r.copy()
     aux_wall[0,1] = 0.5*(aux_wall[0,0] + aux_wall[0,2]) + wall_height
 
-    L2R, R2L, hstarL, hstarR, ustarL, ustarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
+    L2R, R2L, hstarL, hstarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
     if (L2R==True and R2L==True):
         q_wall[0,1] = 0.5*(hstarL+hstarR)
-        q_wall[1,1] = q_wall[0,1]  * 0.5*(ustarL+ustarR) #(q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
+        q_wall[1,1] = q_wall[0,1]  * (q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
 
     q_wall_l = q_wall[:,:-1]
     q_wall_r = q_wall[:,1:]
@@ -965,11 +959,11 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     aux_wall[0,2] = aux_r.copy()
     aux_wall[0,1] = 0.5*(aux_wall[0,0] + aux_wall[0,2]) + wall_height
 
-    L2R, R2L, hstarL, hstarR, ustarL, ustarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
+    L2R, R2L, hstarL, hstarR = barrier_passing(q_wall[0,0], q_wall[0,2], q_wall[1,0], q_wall[1,2], aux_wall[0,0], aux_wall[0,2], wall_height, drytol, g, maxiter)
 
     if (L2R==True and R2L==True):
         q_wall[0,1] = 0.5*(hstarL+hstarR)
-        q_wall[1,1] = (ustarL*np.sqrt(hstarL) + ustarR*np.sqrt(hstarR))/(np.sqrt(hstarL)+np.sqrt(hstarR))#q_wall[0,1]  * 0.5*(ustarL+ustarR)#(q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
+        q_wall[1,1] = q_wall[0,1]  * (q_wall[1,0] + q_wall[1,2])/(q_wall[0,0] + q_wall[0,2]) # h*_avg * (huL+huR)/(hL+hR)
     if wall_height == 0.0:
         q_wall[0,1] = q_wall[0,0]
         q_wall[1,1] = q_wall[1,0]
@@ -1252,11 +1246,9 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
 
     # s_wall[0] = np.min(s) #s[0,0] #
     # s_wall[1] = np.max(s) #s[2,1] ##[2,:])
-    lambs[0] = np.min(s) #0.5*(s[0,0] + s[0,1])
+    lambs[0] = 0.5*(s[0,0] + s[0,1])
     lambs[1] = 0.5*(s[1,0] + s[1,1])
-    lambs[2] = np.max(s) #0.5*(s[2,0] + s[2,1])
-
-
+    lambs[2] = 0.5*(s[2,0] + s[2,1])
     # R[0,0] = 1
     # R[1,0] = lambs[0]
     # R[2,0] = lambs[0]**2
@@ -1310,12 +1302,12 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
     #     # if mw == 1:
     #     #     pass
     #     if s_wall[mw] <0:
-    #         amdq_wall += wave_wall[:,mw]
+    #         amdq_wall += wave_wall[:2,mw]
     #     elif s_wall[mw] > 0:
-    #         apdq_wall += wave_wall[:,mw]
+    #         apdq_wall += wave_wall[:2,mw]
     #     else:
-    #         amdq_wall += 0.5 * wave_wall[:,mw]
-    #         apdq_wall += 0.5 * wave_wall[:,mw]
+    #         amdq_wall += 0.5 * wave_wall[:2,mw]
+    #         apdq_wall += 0.5 * wave_wall[:2,mw]
         # if mw == 3:
         #     mw -= 1
             # if (s[mw,mk] < 0):
@@ -1462,7 +1454,7 @@ def f(Q, problem_data):
     #print("F=",F)
     return F
 
-def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
+def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data):
     g = problem_data['grav']
     nw = problem_data['wall_position']
     wall_height = problem_data['wall_height']
@@ -1589,9 +1581,10 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
                     # second_large_rare = True
 
                 fw, lamb, to1, to2, beta, Del = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
-                if to1 == True:
+                
+                if lamb[1] <0:
                     wall1 = wall[0]
-                elif to2 == True:
+                elif lamb[1] >0:
                     wall1 = wall[1]
                 else:
                     wall1 = 0
@@ -1658,34 +1651,34 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
 
 #################
 
-        dxdt = dx/dt
+        # dxdt = dx/dt
 
 ##################
-        fwave_re, s_re, amdq[:,iw], apdq[:,iw] = redistribute_fwave(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
+        # fwave_redist, s_redist, amdq[:,iw], apdq[:,iw] = redistribute_fwavef(q_hbox[:,1].copy(),q_hbox[:,2].copy(),aux_hbox[0,1].copy(), aux_hbox[0,2].copy(),wall_height,drytol,g,maxiter)
         # fwave[:,:,iw] = gamma[:,[0,1,3]]
         # s[:,iw] = s_fwave[[0,1,3]]
     #    amdq[:,iw] = (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_l[:,iw],problem_data)
     #    apdq[:,iw] = f(q_l[:,iw+1],problem_data) - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])
 
-        #hboxes riemann problem solving for flux:
-        amdq_hbox = np.zeros((2,4))
-        apdq_hbox = np.zeros((2,4))
-        amdq_hbox[:,1] = amdq[:,iw] #(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_hbox[:,1],problem_data) #redistribute_fwave(q_hbox[:,[1]].copy(), q_hbox[:,[2]].copy(), aux_hbox[0,1].copy(), aux_hbox[0,2].copy(), wall_height, drytol, g, maxiter)
-        apdq_hbox[:,2] = apdq[:,iw] # f(q_hbox[:,2],problem_data) -(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])
-
-        amdq_hbox[:,2] = amdq[:,iw+1] + f(q_l[:,iw+1],problem_data) - f(q_hbox[:,2],problem_data)
-        apdq_hbox[:,3] = apdq[:,iw+1] + f(q_hbox[:,3],problem_data) - f(q_r[:,iw+1],problem_data)
-        amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * ((1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
+        # #hboxes riemann problem solving for flux:
+        # amdq_hbox = np.zeros((2,4))
+        # apdq_hbox = np.zeros((2,4))
+        # amdq_hbox[:,1] = amdq[:,iw] #(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1]) - f(q_hbox[:,1],problem_data) #redistribute_fwave(q_hbox[:,[1]].copy(), q_hbox[:,[2]].copy(), aux_hbox[0,1].copy(), aux_hbox[0,2].copy(), wall_height, drytol, g, maxiter)
+        # apdq_hbox[:,2] = apdq[:,iw] # f(q_hbox[:,2],problem_data) -(1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])
+        #
+        # amdq_hbox[:,2] = amdq[:,iw+1] + f(q_l[:,iw+1],problem_data) - f(q_hbox[:,2],problem_data)
+        # apdq_hbox[:,3] = apdq[:,iw+1] + f(q_hbox[:,3],problem_data) - f(q_r[:,iw+1],problem_data)
+        # amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * ((1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
 #pdb module debuggger
         #print(amdq_hbox[:,3])
-        amdq_hbox[:,0] = amdq[:,iw-1] + f(q_r[:,iw-2],problem_data) - f(q_hbox[:,0],problem_data)
-        apdq_hbox[:,1] = apdq[:,iw-1] + f(q_hbox[:,1],problem_data) - f(q_r[:,iw-1],problem_data)
-
-        apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
+        # amdq_hbox[:,0] = amdq[:,iw-1] + f(q_r[:,iw-2],problem_data) - f(q_hbox[:,0],problem_data)
+        # apdq_hbox[:,1] = apdq[:,iw-1] + f(q_hbox[:,1],problem_data) - f(q_r[:,iw-1],problem_data)
+        #
+        # apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
 #        print("amdq",amdq)
     #    print("apdq_hbox",apdq_hbox)
 
         # print("mass moemntum diff: ",(MD-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
     #    print("actual",q_l)
 
-        return fwave, s, amdq, apdq, q_hbox, amdq_hbox, apdq_hbox
+        return fwave, s, amdq, apdq #, q_hbox, amdq_hbox, apdq_hbox
