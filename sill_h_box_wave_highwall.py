@@ -105,7 +105,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     state.problem_data['wall_height'] = wall_height
     state.problem_data['fraction'] = alpha
     state.problem_data['dry_tolerance'] = 0.001
-    state.problem_data['max_iteration'] = 1
+    state.problem_data['max_iteration'] = 2
     #state.problem_data['method'] = 'h_box_wave' # shifting the grid makes this unnecessary!
     state.problem_data['zero_width'] = True
     #state.problem_data['arrival_state'] = False # shifting the grid makes this unnecessary!
@@ -122,7 +122,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     solver.cfl_desired = 0.7
     solver.kernel_language = "Python"
     solver.fwave = True
-    solver.num_waves = 2
+    solver.num_waves = 3
     solver.num_eqn = 2
     solver.before_step = before_step
     solver.bc_lower[0] = pyclaw.BC.wall
@@ -139,6 +139,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     xpxc = (cells_number) * 1.0 / (cells_number-1)
     state.problem_data['xpxc'] = xpxc
     state.aux[0, :] = - 1.2 * numpy.ones(xc.shape)
+    # state.aux[0, 100:] = -0.8
     #state.aux[0,nw:nw+2] = -0.1
 
     ## slope bathymetry
@@ -153,11 +154,11 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
     # so will need two hbox pairs: one at left endpoint and one at right endpoint
     state.aux[1, nw-1] = alpha * xpxc
     state.aux[1, nw] = (1 - alpha) * xpxc
-    state.q[0, :] = -0.3 - state.aux[0, :]
+    state.q[0, :] = -0.4 - state.aux[0, :]
     #state.q[0, nw:nw+2] = 0
-    state.q[0,nw:] = 0
+    state.q[0,nw:] = 0 #0.4
 
-    state.q[0,:20] += 0.5
+    state.q[0,:80] += 1.1
     state.q[0,:] = state.q[0,:].clip(min=0)
     state.q[1,:] = 0
     print(state.q[0,:])
@@ -165,7 +166,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 
     claw = pyclaw.Controller()
     claw.keep_copy = True
-    claw.tfinal = 0.25
+    claw.tfinal = 0.7
     claw.solution = pyclaw.Solution(state, domain)
     claw.solver = solver
     # claw.setplot = setplot
@@ -183,7 +184,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 
 
     claw.output_style = 1
-    claw.num_output_times = 10
+    claw.num_output_times = 20
     claw.nstepout = 1
 
     # if outdir is not None:
@@ -202,7 +203,7 @@ def setup(kernel_language='Python',use_petsc=False, outdir='./_output', solver_t
 # get the solution q and capacity array and give out the mass
     print("change in water vol",((numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))  - (numpy.sum(claw.frames[-1].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0)))/numpy.sum(claw.frames[0].q[0,:]*(1/cells_number)*state.aux[1,:],axis=0))
     plot_kargs = {'problem_data':state.problem_data}
-    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots',iplot=False, htmlplot=True, **plot_kargs)
+    plot(setplot="./setplot_h_box_wave.py",outdir='./_output',plotdir='./plots_zero',iplot=False, htmlplot=True, **plot_kargs)
 
 #setplot="./setplot_h_box_wave.py"
 
