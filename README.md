@@ -11,13 +11,13 @@ much more often than is probably necessary.
 
 Examples
 ========
- - Well-Balancing and Ghost Fluid (sill_edge.py): Test which uses a setting of 
+ - Well-Balancing and Ghost Fluid (sill_edge.py, shallow...redistribute.py): Test which uses a setting of 
    a steady state including a wall assigning at the edge.
  - Conservation of mass (mass_conservation.ipynb): Demonstration that the 
    wave redistribution method maintains conservation. Includes a jump in depth at 
    x = -0.2 with zero momentum, which is the initial condition of the classic 
    dam-break problem.
- - Leaky Barriers (sill_h_box_wave.py): Test that the barrier does indeed keep
+ - Leaky Barriers (sill_h_box_wave.py, shallow...wave_MB.py): Test that the barrier does indeed keep
    water from flowing past it provided that the barrier is high enough. The barrier
    is assigned within a cell at x=-0.024.
  - Over-Topped Barrier on a Sloping Beach (sill_h_box_wave.py): Example of coastal flood 
