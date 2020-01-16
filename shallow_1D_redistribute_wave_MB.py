@@ -786,16 +786,16 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
 
     amdq_hbox[:,2] = amdq[:,iw+1] + f(q_l[:,iw+1],problem_data) - f(q_hbox[:,2],problem_data)
     apdq_hbox[:,3] = apdq[:,iw+1] + f(q_hbox[:,3],problem_data) - f(q_r[:,iw+1],problem_data)
+    amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * ((1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
     # uncomment below for dry state
     # amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * (-f(q_hbox[:,2],problem_data) + apdq[:,iw]) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
-    amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data)+amdq[:,iw+3]) + (alpha**2/(1-alpha))*(f(q_l[:,iw+1],problem_data) + amdq[:,iw+1]) + alpha**2/(1-alpha) * ((1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) - alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * alpha**2 * (q_l[:,iw+2]-q_l[:,iw+1])) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
-
+    
     amdq_hbox[:,0] = amdq[:,iw-1] + f(q_r[:,iw-2],problem_data) - f(q_hbox[:,0],problem_data)
     apdq_hbox[:,1] = apdq[:,iw-1] + f(q_hbox[:,1],problem_data) - f(q_r[:,iw-1],problem_data)
+    apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
     # uncomment below for dry state
     # apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (amdq[:,iw]+f(q_hbox[:,1],problem_data))) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
-    apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3])+(alpha-1)**2/(alpha)*(f(q_l[:,iw],problem_data)-apdq[:,iw-1] - (1-alpha)**2/(1-2*alpha) * (f(q_l[:,iw-1],problem_data)+amdq[:,iw-1]) + alpha**2/(1-2*alpha) * (f(q_l[:,iw+1],problem_data)+amdq[:,iw+1])) + 1*(dxdt * (alpha-1)**2 * (q_l[:,iw] - q_l[:,iw-1]))) #alpha*apdq[:,iw-2] + (1-alpha)*apdq[:,iw-3] + f(q_hbox[:,0],problem_data) - (alpha*f(q_r[:,iw-2],problem_data) + (1-alpha)*f(q_r[:,iw-3],problem_data))
-
+    
 
     # print("mass moemntum diff: ",(MD-(amdq[0,:]+apdq[0,:])))#, " apdq+amdq: ", amdq[0,:]+apdq[0,:])
     return fwave, s, amdq, apdq, q_hbox, amdq_hbox, apdq_hbox
