@@ -1,7 +1,7 @@
 xlower=0.0
 xupper=1.0
-cells_number=100
-wall_position=50
+cells_number=400
+wall_position=200
 fraction=0.1
-wall_height=0
+wall_height=0.3
 sea_level=0.0
