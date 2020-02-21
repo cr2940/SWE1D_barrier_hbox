@@ -10,6 +10,10 @@ def load_parameters(fileName):
         params[key_value[0]] = key_value[1]
     return params
 
+############## the commented section are other output which you can plot on top of the original output. #############
+############## uncomment to compare results. Number of grid ##########
+############### cells must be same however #################
+
 # fort_output1 = '/home/cr2940/SWE1D_barrier_hbox/_output_cellwall_small_16000/fort.q00'
 # h1 = numpy.zeros((21,16000))
 # hu1 = numpy.zeros((21,16000))
