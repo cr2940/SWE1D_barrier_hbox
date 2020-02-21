@@ -18,3 +18,4 @@ Examples
    x = -0.2 with zero momentum, which is the initial condition of the classic 
    dam-break problem. (only for wall on edge)
  - On every output of ...highwall.py simulation there will be printout of change in mass, which is 10^-16
+ - See Clawpack website (clawpack.org) and Pyclaw on how to make your own simulation (i.e. how to work with cellwall highwall files)
