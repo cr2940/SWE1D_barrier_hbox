@@ -618,7 +618,7 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
 
 
         else:
-            q_wall[0,1] = 0.5*(hstarL+hstarR+aux_wall[0,0]+aux_wall[0,2]) - aux_wall[0,1]# - wall_height #q_wall[0,0]+q_wall[0,2]) - wall_height #
+            q_wall[0,1] = 0.5*(hstarL+hstarR+aux_wall[0,0]+aux_wall[0,2]) - aux_wall[0,1]
             q_wall[1,1] =q_wall[0,1]*0.5*(ustarL+ustarR)
 
 ############################################
@@ -723,9 +723,9 @@ def redistribute_fwavef(q_l, q_r, aux_l, aux_r, wall_height, drytol, g, maxiter)
                     apdq[:,i] += 0.5 * fwave[:2,mw,i]
 
     ################################################################
-    lambs[0] = 0.5*(s[0,0] + s[0,1]) #min(s[0,0],s[0,1]) ## np.min(s) #min(s[0,0],s[0,1]) #np.min(s) #s[0,0] #np.min(s) #0.5*(s[0,0] + s[0,1])
-    lambs[1] =0.5*(s[1,1]+s[1,0]) #min(s[1,0],s[1,1])#  s[1,0] # 0.5*(s[0,0]+s[2,1]) #np.min(s)+np.max(s))#0.5*(s[1,1]+s[1,0])
-    lambs[2] =0.5*(s[2,0] + s[2,1]) #min(s[2,1],s[2,0]) # s[2,1] #np.max(s) #min(s[2,1],s[2,0]) #snp.max(s) # [2,1]  0.5*(s[2,0] + s[2,1])
+    lambs[0] = 0.5*(s[0,0] + s[0,1]) 
+    lambs[1] =0.5*(s[1,1]+s[1,0]) 
+    lambs[2] =0.5*(s[2,0] + s[2,1]) 
     ##################################################################
     if L2R == False and R2L == False:
         lambs[0]=np.min(s)
@@ -811,8 +811,8 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
     q_hbox = np.zeros((2,4))
     aux_hbox = np.zeros((1,4))
 
-    q_hbox[:,0] = (1-alpha)*q_l[:,iw-2] + alpha*q_r[:,iw-2] #(ratio2) * q_l[:,iw+1] + (1-ratio2) * q_l[:,iw+2]
-    aux_hbox[0,0] = (1-alpha)*aux_l[0,iw-2] + alpha*aux_r[0,iw-2] #(ratio2) * aux_l[0,iw+1] + (1-ratio2) * aux_l[0,iw+2]
+    q_hbox[:,0] = (1-alpha)*q_l[:,iw-2] + alpha*q_r[:,iw-2] 
+    aux_hbox[0,0] = (1-alpha)*aux_l[0,iw-2] + alpha*aux_r[0,iw-2] 
     q_hbox[:,1] = (1-alpha)*q_l[:,iw-1] + alpha*q_r[:,iw-1]
     aux_hbox[0,1] = (1-alpha)*aux_l[0,iw-1] + alpha*aux_r[0,iw-1]
 
@@ -919,17 +919,123 @@ def shallow_fwave_hbox_dry_1d(q_l, q_r, aux_l, aux_r, problem_data,dt,dx):
     #hboxes riemann problem solving for flux:
     amdq_hbox = np.zeros((2,4))
     apdq_hbox = np.zeros((2,4))
+    # converting the fluctuation to double hbox fluctuations:
     amdq_hbox[:,1] = amdq[:,iw]  + f(q_r[:,iw-1],problem_data) - f(q_hbox[:,1],problem_data)
     apdq_hbox[:,2] = apdq[:,iw] + f(q_hbox[:,2],problem_data) - f(q_r[:,iw],problem_data)
-
-
-    amdq_hbox[:,2] = amdq[:,iw+1] + f(q_l[:,iw+1],problem_data) - f(q_hbox[:,2],problem_data)
-    apdq_hbox[:,3] = apdq[:,iw+1] + f(q_hbox[:,3],problem_data) - f(q_r[:,iw+1],problem_data)
+    # the fluctuation in between hboxes on one side:
+    fwave_r,s_r,amdq_hbox[:,2],apdq_hbox[:,3] = single_RP(q_hbox[:,2],q_hbox[:,3],aux_hbox[0,2],aux_hbox[0,3],problem_data)
+    fwave_r,s_r,amdq_hbox[:,0],apdq_hbox[:,1] = single_RP(q_hbox[:,0],q_hbox[:,1],aux_hbox[0,0],aux_hbox[0,1],problem_data) 
+    # the outer fluctuations:
     amdq_hbox[:,3] = alpha*(f(q_l[:,iw+3],problem_data) +amdq[:,iw+3]) + (1-alpha)* (f(q_l[:,iw+2],problem_data)+amdq[:,iw+2]) - f(q_hbox[:,3],problem_data)#(1-alpha)*amdq[:,iw+2] + (alpha)*amdq[:,iw+3] + (1-alpha)*f(q_r[:,iw+1],problem_data) + (alpha)*f(q_r[:,iw+2],problem_data) - f(q_hbox[:,3],problem_data)
-
-    amdq_hbox[:,0] = amdq[:,iw-1] + f(q_r[:,iw-2],problem_data) - f(q_hbox[:,0],problem_data)
-    apdq_hbox[:,1] = apdq[:,iw-1] + f(q_hbox[:,1],problem_data) - f(q_r[:,iw-1],problem_data)
     apdq_hbox[:,0] = f(q_hbox[:,0],problem_data) - (alpha*(f(q_l[:,iw-1],problem_data)-apdq[:,iw-2]) + (1-alpha)*(f(q_l[:,iw-2],problem_data)-apdq[:,iw-3]))
 
 
     return fwave, s, amdq, apdq, q_hbox, amdq_hbox, apdq_hbox
+
+def single_RP(q_l, q_r, aux_l, aux_r, problem_data):
+    g = problem_data['grav']
+    nw = problem_data['wall_position']
+    wall_height = problem_data['wall_height']
+    drytol = problem_data['dry_tolerance']
+    maxiter = problem_data['max_iteration']
+    alpha = problem_data['fraction']
+
+    # MD = q_r[1,:]-q_l[1,:] # momentum difference
+    num_eqn = 2
+    num_waves = 3 #2
+    num_ghost = 2
+
+# Output arrays
+    fwave = np.zeros((num_eqn, num_waves))
+    s = np.zeros((num_waves))
+    amdq = np.zeros((num_eqn))
+    apdq = np.zeros((num_eqn))
+
+        # regular cells setup and solving:
+    hL = q_l[0]
+    hR = q_r[0]
+    huL = q_l[1]
+    huR = q_r[1]
+    bL = aux_l
+    bR = aux_r
+
+# Check wet/dry states
+    if (hR > drytol): # right state is not dry
+        uR = huR / hR
+        phiR = 0.5 * g * hR**2 + huR**2 / hR
+    else:
+        hR = 0.0
+        huR = 0.0
+        uR = 0.0
+        phiR = 0.0
+
+    if (hL > drytol):
+        uL = huL / hL
+        phiL = 0.5 * g * hL**2 + huL**2 / hL
+    else:
+        hL = 0.0
+        huL = 0.0
+        uL = 0.0
+        phiL = 0.0
+
+
+    if (hL > drytol or hR > drytol):
+        wall = np.ones(2)
+        if (hR <= drytol):
+            hstar,_,_,_,_,_ = riemanntype(hL, hL, uL, -uL, maxiter, drytol, g)
+            hstartest = max(hL, hstar)
+            if (hstartest + bL <= bR):
+                wall[1] = 0.0
+                hR = hL
+                huR = -huL
+                bR = bL
+                phiR = phiL
+                uR = -uL
+            elif (hL + bL <= bR): # for steady state
+                bR = hL + bL
+
+        if (hL <= drytol):
+            hstar,_,_,_,_,_ = riemanntype(hR, hR, -uR, uR, maxiter, drytol, g)
+            hstartest = max(hR, hstar)
+            if (hstartest + bR <= bL):
+                wall[0] = 0.0
+                hL = hR
+                huL = -huR
+                bL = bR
+                phiL = phiR
+                uL = -uR
+            elif (hR + bR <= bL):
+                bL = hR + bR
+        sL = uL - np.sqrt(g * hL)
+        sR = uR + np.sqrt(g * hR)
+        uhat = (np.sqrt(g * hL) * uL + np.sqrt(g * hR) * uR) / (np.sqrt(g * hR) + np.sqrt(g * hL))
+        chat = np.sqrt(g * 0.5 * (hR + hL))
+        sRoe1 = uhat - chat
+        sRoe2 = uhat + chat
+        s1 = min(sL, sRoe1)
+        s2 = max(sR, sRoe2)
+
+        fw, lamb, to1, to2, beta, Del = riemann_fwave_1d(hL, hR, huL, huR, bL, bR, uL, uR, phiL, phiR, s1, s2, g)
+        if lamb[1] <0:
+            wall1 = wall[0]
+        elif lamb[1] >0:
+            wall1 = wall[1]
+        else:
+            wall1 = 0
+
+        s[0] = lamb[0]* wall[0] # s1
+        s[1] = lamb[1] * wall1
+        s[2] = lamb[2]* wall[1]#  s2
+        fwave[:,0] = fw[:2,0] * wall[0]
+        fwave[:,1] = fw[:2,1] * wall1
+        fwave[:,2] = fw[:2,2] * wall[1]
+
+        for mw in range(num_waves):
+            if (s[mw] < 0):
+                amdq[:] += fwave[:,mw]
+            elif (s[mw] > 0):
+                apdq[:] += fwave[:,mw]
+            else:
+                amdq[:] += 0.5 * fwave[:,mw]
+                apdq[:] += 0.5 * fwave[:,mw]
+    return fwave,s,amdq,apdq
